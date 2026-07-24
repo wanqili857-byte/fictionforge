@@ -298,26 +298,20 @@ def build_normal_prompt(spec, sections, context_before=None):
         lines.append(context_before)
         lines.append("")
 
-    lines.append(f"### {len(sections)}节写作需求")
+    lines.append("### 场景清单")
+    lines.append("以下是本章需要经过的场景，按时间顺序排列。把它们连成一段自然流动的叙述——不设分节，不自加标题，不作任何标记。")
     lines.append("")
 
+    freeform = spec.get("freeform", False)
     for sec in sections:
-        lines.append(f"#### {sec['id']}、{sec['subject']}")
-        lines.append(sec["description"])
-        if "tension_direction" in sec and sec["tension_direction"]:
-            lines.append(f"张力方向：{sec['tension_direction']}")
+        desc = sec["description"]
+        if freeform and "tension_direction" in sec and sec["tension_direction"]:
+            desc += f"（方向：{sec['tension_direction']}）"
+        lines.append(f"- {desc}")
         lines.append("")
 
-    lines.append("## 输出要求")
-    lines.append("直接输出正文。不要注释、不要说明。")
-    lines.append("每节以" + "、".join(f"\"{s['id']}\"" for s in sections) + "开头单独一行。")
-    lines.append("节与节之间用 *** 分隔。")
-    lines.append("")
-    lines.append("### 每节硬约束（写前必读，超过任何系统指引）")
-    lines.append("- 计数限1次以内。主角不是一个在数数的人。如果这节不需要计数，就不要写。")
-    lines.append("- 主角至少做一次推演——不写她觉得怎样，写她算了什么、排除了什么、选了哪条路。")
-    lines.append("- 不写主角自己不会注意到的信息（她的穿着、外貌、上帝视角时间）。")
-    lines.append("- 写不下去时允许用 *** 或空行跳过，不补充填充句。")
+    lines.append("### 输出要求")
+    lines.append("直接写正文。不要注释、不要说明。不要分节标题，不要***，不要任何标记。全文是一段自然连贯的叙述。")
     lines.append("")
 
     return "\n".join(lines)
@@ -326,38 +320,25 @@ def build_normal_prompt(spec, sections, context_before=None):
 def build_expanded_prompt(spec, section, context_before=None):
     """Build user prompt for a single expanded section."""
     lines = [f"## {spec['title']}·单独段落写作", ""]
-    lines.append(f"这一段是章节的核心段落，需要详细展开。至少写{section.get('target_words', 600)}字。")
+    lines.append(f"这一段是章节的核心段落，需要详细展开。")
     lines.append("")
 
     if context_before:
-        lines.append("### 上文概要（用于衔接上下文）")
+        lines.append("### 上文概要")
         lines.append(context_before)
         lines.append("")
 
-    lines.append(f"### {section['id']}、{section['subject']}")
+    lines.append(f"### {section['subject']}")
     lines.append(section['description'])
     lines.append("")
 
     if "expanded_direction" in section and section["expanded_direction"]:
-        lines.append("### 展开方向（重点）")
+        lines.append("### 展开方向")
         lines.append(section["expanded_direction"])
         lines.append("")
 
-    if "tension_direction" in section and section["tension_direction"]:
-        lines.append("### 张力方向")
-        lines.append(section["tension_direction"])
-        lines.append("")
-
     lines.append("### 输出要求")
-    lines.append("直接输出这一个段落的正文。不要注释、不要说明。")
-    lines.append("注意分段：和前面各节一样的格式，短段落，1-3句换行，场景转换用空行隔开。")
-    lines.append(f"第一行写\"{section['id']}\"作为节标记，然后直接写正文。")
-    lines.append("")
-    lines.append("### 硬约束（写前必读，超过任何系统指引）")
-    lines.append("- 计数限1次以内。主角不是一个在数数的人。如果这节不需要计数，就不要写。")
-    lines.append("- 至少写一次主角的推演——不写她觉得怎样，写她算了什么、排除了什么、选了哪条路。")
-    lines.append("- 不写主角自己不会注意到的信息（她的穿着、外貌、上帝视角时间）。")
-    lines.append("- 写不下去时用 *** 跳过，不补充填充句。")
+    lines.append("直接写正文。不要注释、不要说明。短段落，1-3句换行，场景转换用空行隔开。")
     lines.append("")
 
     return "\n".join(lines)
@@ -829,6 +810,17 @@ def parse_normal_sections(text, normal_secs):
 def merge_sections(spec, normal_texts, expanded_texts):
     """Merge multiple normal batch texts + expanded texts at correct positions."""
     sections = spec["sections"]
+
+    # Freeform mode: continuous text, no section markers
+    if spec.get("freeform"):
+        text = "\n\n".join(t.strip() for t in normal_texts if t.strip())
+        expanded_secs = [s for s in sections if s.get("weight") == "expanded"]
+        if expanded_secs and expanded_texts:
+            for sec in expanded_secs:
+                if sec["id"] in expanded_texts:
+                    text += "\n\n###\n\n" + expanded_texts[sec["id"]].strip()
+        return text.strip()
+
     normal_secs = [s for s in sections if s.get("weight", "normal") != "expanded"]
 
     # Parse all normal batch texts
