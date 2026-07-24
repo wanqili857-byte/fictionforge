@@ -305,9 +305,10 @@ def build_normal_prompt(spec, sections, context_before=None):
     freeform = spec.get("freeform", False)
     for sec in sections:
         desc = sec["description"]
+        label = "[重点] " if sec.get("weight_hint") == "focus" else ""
         if freeform and "tension_direction" in sec and sec["tension_direction"]:
             desc += f"（方向：{sec['tension_direction']}）"
-        lines.append(f"- {desc}")
+        lines.append(f"- {label}{desc}")
         lines.append("")
 
     lines.append("### 输出要求")
