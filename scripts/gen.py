@@ -9,7 +9,7 @@ Usage:
     python scripts/gen.py novels/<novel>/specs/<spec>.json
 
 Example:
-    python scripts/gen.py novels/示例/specs/ch1.json
+    python scripts/gen.py novels/静默轨道/specs/ch1.json
 """
 
 import json
@@ -85,146 +85,31 @@ def load_character_bible(novel_dir):
 
 
 def load_worldbuilding(novel_dir, novel_config=None):
-    """Load and distill worldbuilding rules from bible/世界观.md.
+    """Load worldbuilding rules from novel_config + bible/世界观.md.
 
-    Returns a concise rule block for system prompt, or empty string.
-    蒸馏段落的 marker 语义随小说而异：蒸馏无结果时回退注入全文。
+    通用实现（与 world_sim 同一策略，framework 不绑定任何小说的 marker 语义）：
+    1. novel_config.quality.world_summary → 世界观摘要
+    2. novel_config.quality.world_core_principle → 核心原则
+    3. 两者皆无 → distill_world_lore 从 世界观.md 通用蒸馏
+    4. 蒸馏无结果 → 注入 世界观.md 全文兜底
     """
-    from lib.bible_utils import load_bible_file
-    text = load_bible_file(novel_dir, "世界观.md")
-    if not text:
-        log.info(f"  [info] no worldbuilding bible at {Path(novel_dir) / 'bible' / '世界观.md'}")
-        return ""
+    from lib.bible_utils import load_bible_file, distill_world_lore
 
-    lines = text.split("\n")
+    quality = (novel_config or {}).get("quality", {})
+    summary = (quality.get("world_summary") or "").strip()
+    core = (quality.get("world_core_principle") or "").strip()
 
-    # Extract content under key sections
-    sections = {}
-    current_key = None
-    current_lines = []
-    key_markers = {
-        "异常本质": "异常本质",
-        "阶段递进": "阶段递进结构",
-        "理性边界": "理性的边界",
-        "进化": "进化 + 主动选择",
-    }
-
-    for line in lines:
-        stripped = line.strip()
-        # Detect key section headers
-        for key, marker in key_markers.items():
-            if marker in stripped and stripped.startswith("###"):
-                if current_key:
-                    sections[current_key] = current_lines
-                current_key = key
-                current_lines = []
-                break
-        else:
-            if current_key and stripped:
-                current_lines.append(stripped)
-
-    if current_key:
-        sections[current_key] = current_lines
-
-    def strip_md(s):
-        """Remove markdown bold markers from string."""
-        return s.replace("**", "")
-
-    # Build compact rule block
     rules = ["## 世界观规则"]
+    if summary:
+        rules.append("世界观：" + summary)
+    if core:
+        rules.append("核心原则：" + core)
 
-    if "异常本质" in sections:
-        # Take clean sentences
-        content = "\n".join(sections["异常本质"])
-        # Split into individual lines, take the ones that start a concept
-        key_sentences = []
-        for line_n in content.split("\n"):
-            s = strip_md(line_n.strip())
-            if not s:
-                continue
-            # Skip ### headers, bullet markers, table lines
-            if s.startswith("###") or s.startswith("- **") or s.startswith("|"):
-                continue
-            # Skip lines about "触发机制" etc that are sub-section titles
-            if s.startswith("触发机制") or s.startswith("传导"):
-                continue
-            key_sentences.append(s)
-
-        # Take up to 3 clean sentences
-        taken = 0
-        for s in key_sentences:
-            if taken >= 3:
-                break
-            # Skip sentences that are too long (contain multiple concepts)
-            if len(s) > 150 and "。" in s:
-                for part in s.split("。"):
-                    if part.strip() and taken < 3:
-                        rules.append(part.strip() + "。")
-                        taken += 1
-            elif s.endswith("。") or s.endswith("。"):
-                rules.append(s)
-                taken += 1
-
-    if "阶段递进" in sections:
-        content = "\n".join(sections["阶段递进"])
-        for line_n in content.split("\n"):
-            s = strip_md(line_n.strip())
-            if "外层" in s and "身体" in s:
-                rules.append(s)
-            elif "中层" in s and "认知" in s:
-                rules.append(s)
-            elif "内层" in s and "规则" in s and "改写" in s:
-                rules.append(s)
-            elif "规则倾向" in s:
-                rules.append(s)
-
-    if "理性边界" in sections:
-        content = " ".join(sections["理性边界"])
-        s = strip_md(content)
-        # Take the line about protagonist's limitation, skip table rows and artifacts
-        lines_clean = [l for l in s.split(" ") if l.strip() and "|---" not in l and not l.startswith("|")]
-        combined = " ".join(lines_clean).replace("|", "")
-        protagonist = _protagonist(novel_config or {})
-        if protagonist and protagonist in combined:
-            idx = combined.find(protagonist)
-            end = combined.find("。", idx)
-            if end > idx:
-                rules.append(combined[idx:end+1].strip())
-
-    if "进化" in sections:
-        content = "\n".join(sections["进化"])
-        protagonist = _protagonist(novel_config or {})
-        taken = 0
-        for line_n in content.split("\n"):
-            s = strip_md(line_n.strip())
-            if not s or s.startswith("###"):
-                continue
-            if s.startswith("🔬") or s.startswith("- "):
-                continue
-            if (protagonist and s.startswith("但" + protagonist)) or "主动选择异常方向" in s:
-                rules.append(s)
-                taken += 1
-            elif "反复做" in s or "变异是创伤" in s:
-                rules.append(s)
-                taken += 1
-            if taken >= 3:
-                break
-            # Limit to 3 lines
-            if sum(1 for r in rules if "进化" in r or "反复" in r or "变异是" in r or "主动" in r) >= 3:
-                break
-
-    # Core principle (always appended)——可配置，无配置用通用兜底
-    core = (novel_config or {}).get("quality", {}).get("world_core_principle", "")
-    if not core:
-        core = ("世界有自己的运行规则。不同角色对异常的解读各不相同"
-                "（超自然/心理/科学）。保持世界观一致，异常有其内在逻辑。")
-    rules.append("核心原则：" + core)
-
-    if len(rules) <= 2:
-        # 蒸馏无结果（rules 只有标题 + 核心原则）→ 注入全文
+    if not (summary or core):
         full = load_bible_file(novel_dir, "世界观.md")
         if full:
-            rules.append(full)
+            lore = distill_world_lore(full) or full
+            rules.append(lore)
 
     result = "\n".join(rules)
     log.info(f"  [worldbuilding] {len(rules)-1} rules, {len(result)} chars")
@@ -257,11 +142,6 @@ def load_adapt_rules():
     rules = {
         "anti_ai": _load_json(ADAPT / "anti-ai-zh.json"),
     }
-    # Optional files — load if exist
-    for fname in ("character-profiles.json",):
-        p = ADAPT / fname
-        if p.exists():
-            rules[fname.replace(".json", "").replace("-", "_")] = _load_json(p)
     return rules
 
 
@@ -332,8 +212,12 @@ def apply_character_impact(spec, current_state):
 
     return current_state, changed
 
-def format_character_state(state, chapter_num=None):
-    """Format character state for system prompt injection."""
+def format_character_state(state, chapter_num=None, pronoun="主角"):
+    """Format character state for system prompt injection.
+
+    pronoun 从 novel_config.protagonist_pronoun 传入（他/她/它），
+    主角状态描述不再硬编码人称。
+    """
     dims = state["dimensions"]
     # Get changes since start of story
     recent = [h for h in state["history"] if h["chapter"] > 0]
@@ -342,26 +226,26 @@ def format_character_state(state, chapter_num=None):
     # Hide the numerical scores — inject as qualitative description
     lines = []
     if dims["trust"] <= 2:
-        lines.append("她对陌生人普遍不信任。")
+        lines.append(f"{pronoun}对陌生人普遍不信任。")
     elif dims["trust"] >= 4:
-        lines.append("她对人有基本的信任倾向。")
+        lines.append(f"{pronoun}对人有基本的信任倾向。")
     else:
-        lines.append("她对陌生人持观望态度。")
+        lines.append(f"{pronoun}对陌生人持观望态度。")
 
     if dims["assertiveness"] >= 4:
-        lines.append("她遇到问题会主动介入。")
+        lines.append(f"{pronoun}遇到问题会主动介入。")
     elif dims["assertiveness"] <= 2:
-        lines.append("她倾向于先观察后行动，不主动介入。")
+        lines.append(f"{pronoun}倾向于先观察后行动，不主动介入。")
 
     if dims["caution"] >= 4:
-        lines.append("她高度谨慎，风险规避意识强。")
+        lines.append(f"{pronoun}高度谨慎，风险规避意识强。")
     elif dims["caution"] <= 2:
-        lines.append("她风险承受度较高。")
+        lines.append(f"{pronoun}风险承受度较高。")
 
     if dims["moral_burden"] >= 4:
-        lines.append("她的道德包袱重——不做某些事不是因为不想，是良心过不去。")
+        lines.append(f"{pronoun}的道德包袱重——不做某些事不是因为不想，是良心过不去。")
     elif dims["moral_burden"] <= 2:
-        lines.append("她在做取舍时内疚感较轻。")
+        lines.append(f"{pronoun}在做取舍时内疚感较轻。")
 
     if recent_descs:
         lines.append("\n最近重大变化：" + "；".join(recent_descs[-3:]))
@@ -427,7 +311,8 @@ def build_system_prompt(novel_title, novel_dir, character_state=None,
 
     # Character state evolution (if available)
     if character_state:
-        state_text = format_character_state(character_state)
+        pronoun = protagonist_pronoun(novel_config or {}) or "主角"
+        state_text = format_character_state(character_state, pronoun=pronoun)
         if state_text.strip():
             protagonist = _protagonist(novel_config or {})
             parts.append(f"## {protagonist}当前性格状态（截至上一章结束）\n\n{state_text}")
@@ -1072,7 +957,8 @@ def verve_review(text, spec, novel_config=None):
                  "没说话", "没应声", "没回答", "接了"]
     c_hits = sum(1 for p in c_phrases if p in text)
     # Look for action-sequence patterns (做A→发现B→决定C)
-    action_seq = len(re.findall(r'[。]\s*她[^。]{2,30}[了]', text))
+    _pronoun = protagonist_pronoun(novel_config or {}) or "主角"
+    action_seq = len(re.findall(rf'[。]\s*{_pronoun}[^。]{{2,30}}[了]', text))
     if c_hits < 2 and action_seq < 3:
         findings.append({
             "severity": "info",
@@ -1150,7 +1036,7 @@ def update_state_file(state_path, chapter_num, extracted_text,
     if not state_path.exists():
         header = "# 章节状态记录\n\n> 每完成一章自动更新。\n\n"
         ref_table = (f"\n## 章节对照表\n\n| 章 | 时间跨度 | 地点 | 核心事件 "
-                     f"| {protagonist}异常阶段 |\n|---|---|---|---|---|\n")
+                     f"| {protagonist}状态 |\n|---|---|---|---|---|\n")
         state_path.write_text(
             header + new_section + "\n\n" + ref_table, encoding="utf-8"
         )
@@ -1622,7 +1508,7 @@ def main():
 
         tick_data = load_tick_result(engine_tick_path)
         # novel 优先级：--novel 标志 > tick 元数据 > 默认
-        novel = engine_novel or tick_data.get("novel", "") or "示例"
+        novel = engine_novel or tick_data.get("novel", "")
         # framework 是通用包（项目根）；novel agents 在 novels/<novel>/agents，需小说目录入 sys.path
         novel_dir = BASE / "novels" / novel
         sys.path.append(str(novel_dir))

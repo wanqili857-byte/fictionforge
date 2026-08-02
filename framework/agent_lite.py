@@ -1,8 +1,7 @@
 """
 agent_lite.py — 轻量 Agent（Tier 2，配置式）。
 
-用于戏份有限但需独立信念的小角色：
-  配角、配角乙、来电者 等。
+用于戏份有限但需独立信念的小角色（配角等）。
 
 特点：
   - 无持久 memory stream（每次激活从 vault snapshot 重建）

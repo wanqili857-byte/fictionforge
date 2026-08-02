@@ -13,7 +13,7 @@ from framework.api import call_structured
 class LuliAgent(Agent):
     @classmethod
     def from_vault_state(cls, vault_state, vault_reader, memory_store):
-        ...  # 从 luli_state 构造，参考 novels/示例/agents/agent_linmo.py
+        ...  # 从 luli_state 构造，参考 templates/novel/agents/README.md 的 Tier1 模式
 ```
 
 Tier2（零号）用 `framework.agent_lite`，novel_config 已配置，无需代码。

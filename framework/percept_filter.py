@@ -16,10 +16,10 @@ from .agent_base import AgentState
 class PerceptionFilter:
     """基于规则的感知过滤器。不调用 LLM。"""
 
-    # 默认感知阶段顺序，可在实例化时覆盖
+    # 默认感知阶段顺序，可在实例化时覆盖（novel_config.quality.perception_stages）
     DEFAULT_STAGE_ORDER = [
-        "", "初现", "怀疑", "确认期",
-        "紧迫生存意识", "全面变异", "超越",
+        "", "初现", "怀疑", "确认",
+        "紧迫", "深化", "超越",
     ]
 
     def __init__(self, stage_order: Optional[list[str]] = None):

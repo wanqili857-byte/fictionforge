@@ -452,8 +452,6 @@ class Narrator:
                 brief = ev.brief
                 if brief.startswith(private_prefix):
                     brief = "🔒 " + brief[len(private_prefix):]
-                elif brief.startswith("[主角不知道] "):  # 兼容旧 tick 文件
-                    brief = "🔒 " + brief[len("[主角不知道] "):]
                 lines.append(f"| 第{ev.day}天 | {ev.time} | {ev.location} | {brief} |")
             lines.append("")
 

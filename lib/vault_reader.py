@@ -7,7 +7,7 @@ using a simple regex-based frontmatter extractor.
 
 Usage:
     from vault_reader import VaultReader
-    vr = VaultReader("novels/示例/vault")
+    vr = VaultReader("novels/<小说>/vault")
     ch = vr.load_chapter_state(4)
     ctx = vr.build_context_for_model(5)
 """
@@ -229,6 +229,29 @@ class VaultReader:
         self.vault_dir = Path(vault_dir)
         assert self.vault_dir.is_dir(), f"Vault directory not found: {vault_dir}"
         self._chapter_cache = {}
+        self._cfg = None
+
+    def _novel_config(self) -> dict:
+        """加载 novels/<n>/novel_config.json（vault 的上一级）。失败返回 {}。"""
+        if self._cfg is None:
+            self._cfg = {}
+            cfg_path = self.vault_dir.parent / "novel_config.json"
+            if cfg_path.is_file():
+                import json
+                try:
+                    self._cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                except Exception:
+                    self._cfg = {}
+        return self._cfg
+
+    def _cast_state_keys(self) -> dict[str, str]:
+        """state_key → 角色中文名（来自 novel_config.cast）。"""
+        mapping = {}
+        for c in self._novel_config().get("cast", []):
+            sk = c.get("state_key")
+            if sk:
+                mapping[sk] = c.get("name") or sk
+        return mapping
 
     # ── Chapter state ───────────────────────────────────────────────
 
@@ -382,11 +405,12 @@ class VaultReader:
                 parts.append("### 上一章关键事件")
                 for ev in prev_ch['key_events']:
                     parts.append(f"- {ev}")
-            if prev_ch.get('protagonist_state'):
-                ls = prev_ch['protagonist_state']
-                parts.append(f"### 主角状态")
-                if isinstance(ls, dict):
-                    for k, v in ls.items():
+            # 角色状态：遍历 config.cast 定义的 <key>_state 字段
+            state_labels = self._cast_state_keys()
+            for sk, sv in prev_ch.items():
+                if isinstance(sv, dict) and sk in state_labels:
+                    parts.append(f"### {state_labels[sk]} 状态")
+                    for k, v in sv.items():
                         if isinstance(v, list):
                             parts.append(f"- {k}: {'; '.join(v)}")
                         else:
@@ -446,13 +470,13 @@ class VaultReader:
             warnings.append(f"⚠️ 无法读取第{chapter_num-1}章状态——连续性检查跳过")
             return warnings
 
-        # 1. Check character positions
+        # 1. Check character positions（角色名单从 novel_config.cast 读）
         if prev_ch and spec:
             spec_chars = set()
             for sec in spec.get('sections', []):
                 desc = sec.get('description', '')
-                for char_name in ['主角', '亲属', '配角', '来电者', '配角乙']:
-                    if char_name in desc:
+                for char_name in self._cast_state_keys().values():
+                    if char_name and char_name in desc:
                         spec_chars.add(char_name)
 
         # 2. Check time consistency
