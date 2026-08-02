@@ -71,13 +71,15 @@
 pip install requests
 
 # 2. 起 LLM 代理
-python server/gen_proxy.py
+python3 server/gen_proxy.py
 
 # 3. 生成示例小说第一章,看引擎出手
-python scripts/gen.py novels/静默轨道/specs/ch1.json
+python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 ```
 
 > 需要 LLM key:`OPENROUTER_API_KEY` 或 `DEEPSEEK_API_KEY`,放进 `~/.env`(不在项目里,不会被提交)。详见 `server/README.md`。
+>
+> 为什么加 `--force`:《静默轨道》第1章已经随仓库提交,直接跑会被章节状态校验拦下(报 expected ch2)。`--force` 是演示重跑;你新接小说时从新 spec 起章,不需要它。
 
 ---
 
@@ -114,6 +116,6 @@ FictionForge is a **multi-agent novel-writing framework**. Character agents each
 
 Framework and novels are fully decoupled: `framework/` is generic, `novels/<yours>/` is a swappable content package, and `novel_config.json` is the only door between them. See `novels/静默轨道/` for a working sci-fi example.
 
-**Quick start:** `pip install requests` → put an `OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` in `~/.env` → `python server/gen_proxy.py` → `python scripts/gen.py novels/静默轨道/specs/ch1.json`. Unit tests (no LLM, no I/O): `python tests/test_split_scenes.py` + `python tests/test_engine_core.py`.
+**Quick start:** `pip install requests` → put an `OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` in `~/.env` → `python3 server/gen_proxy.py` → `python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` (`--force` because chapter 1 already ships with the repo — see the Chinese section above). Unit tests (no LLM, no I/O): `python3 tests/test_split_scenes.py` + `python3 tests/test_engine_core.py`.
 
 **Bring your own novel:** copy `templates/novel/`, fill `novel_config.json` + `bible/`, write a protagonist agent, done.
