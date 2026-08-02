@@ -23,3 +23,44 @@ def load_bible_file(novel_dir: str | Path, filename: str) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
+
+
+@lru_cache(maxsize=32)
+def distill_world_lore(text: str, max_lines: int = 15) -> str:
+    """通用世界观蒸馏——不依赖任何小说的概念词。
+
+    跳过 YAML frontmatter、markdown 标题、表格行、引用块、代码块，
+    保留有意义的内容行（去 bullet 装饰），上限 max_lines。
+    结果为空表示文档里没有可提取内容。
+    """
+    lines = text.split("\n")
+
+    # 跳过 YAML frontmatter（首行为 --- 时，跳到闭合 --- 之后）
+    start = 0
+    if lines and lines[0].strip() == "---":
+        idx = 1
+        while idx < len(lines):
+            if lines[idx].strip() == "---":
+                start = idx + 1
+                break
+            idx += 1
+
+    out: list[str] = []
+    in_code = False
+    for raw in lines[start:]:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code or line.startswith(("#", "|", ">")):
+            continue
+        if line.startswith("- ") or line.startswith("* "):
+            line = line[2:].strip()
+        if len(line) >= 4:
+            out.append(line)
+        if len(out) >= max_lines:
+            break
+
+    return "\n".join(out)

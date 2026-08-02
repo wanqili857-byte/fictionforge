@@ -1,0 +1,16 @@
+{
+  "chapter": 0,
+  "dimensions": {
+    "trust": 4,
+    "assertiveness": 2,
+    "caution": 2,
+    "moral_burden": 4
+  },
+  "history": [
+    {
+      "chapter": 0,
+      "changes": {},
+      "description": "初始状态。有秩序社会下成长的好孩子。"
+    }
+  ]
+}

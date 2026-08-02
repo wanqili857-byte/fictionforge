@@ -1,0 +1,41 @@
+{
+  "title": "静默轨道",
+  "protagonist": "luli",
+  "protagonist_pronoun": "他",
+  "cast": [
+    {
+      "key": "luli",
+      "name": "陆离",
+      "tier": 1,
+      "state_key": "luli_state",
+      "impl": "agents.agent_luli",
+      "class": "LuliAgent"
+    },
+    {
+      "key": "linghao",
+      "name": "零号",
+      "tier": 2,
+      "impl": "framework.agent_lite",
+      "class": "LiteAgent"
+    }
+  ],
+  "pov_labels": {
+    "luli": "陆离",
+    "luli_private": "陆离（未公开）"
+  },
+  "bible_files": [
+    "写作法则.md",
+    "人设.md",
+    "人物锚点.md",
+    "世界观.md"
+  ],
+  "quality": {
+    "anti_ai_words": ["某种", "显得", "仿佛", "略显", "几分"],
+    "simile_max": 5,
+    "warmth_char": "linghao",
+    "world_summary": "废弃空间站「静默号」沿轨道运行二十年无人应答，站内数据残骸疑似前文明遗迹",
+    "world_core_principle": "前文明的数据残骸会伪造记忆以诱使后来者接续运行。陆离用文献学方法逐条验证，不信任任何'看起来对'的档案。",
+    "forbidden_words": ["突然", "忽然", "只见"],
+    "anomaly_words": ["异常", "不对", "日志", "签名", "哈希", "档案", "测年", "残骸", "篡改", "空洞", "错误", "信号"]
+  }
+}

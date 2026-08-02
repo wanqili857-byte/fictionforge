@@ -18,7 +18,6 @@ import re
 import sys
 from functools import lru_cache
 from pathlib import Path
-from collections import defaultdict
 
 # ── Ensure project root is on sys.path for lib/ and server/ imports ────
 _ROOT = Path(__file__).resolve().parent.parent
@@ -32,8 +31,24 @@ log = get_logger("gen")
 BASE = Path(__file__).resolve().parent.parent  # scripts/../ = project root
 ADAPT = BASE / "adapt"
 
+# 逐节顺序生成时，串给下一节的"上文实稿"最大窗口（防上下文无限膨胀）
+_SECTION_CONTEXT_WINDOW = 4000
+
 # ── Model routes ───────────────────────────────────────────────────────
 from server._api_client import MODEL_ROUTES
+
+# ── Novel config（框架与小说的唯一接口）─────────────────────────────
+from framework.novel_config import (
+    load as load_novel_config,
+    protagonist_name as config_protagonist_name,
+    character_name,
+    protagonist_pronoun,
+)
+
+
+def _protagonist(config: dict) -> str:
+    """主角中文名；无配置时降级为"主角"。"""
+    return config_protagonist_name(config) or "主角"
 
 
 # ── Load adapt rules ──────────────────────────────────────────────────
@@ -57,7 +72,7 @@ def load_character_bible(novel_dir):
         if line.startswith("## "):
             if current_name:
                 sections[current_name] = "\n".join(current_lines).strip()
-            # "主角（主角）" → "主角"
+            # "角色名（主角）" → "角色名"
             current_name = line[3:].split("（")[0].strip()
             current_lines = []
         elif current_name:
@@ -69,11 +84,11 @@ def load_character_bible(novel_dir):
     return sections
 
 
-@lru_cache(maxsize=4)
-def load_worldbuilding(novel_dir):
+def load_worldbuilding(novel_dir, novel_config=None):
     """Load and distill worldbuilding rules from bible/世界观.md.
 
     Returns a concise rule block for system prompt, or empty string.
+    蒸馏段落的 marker 语义随小说而异：蒸馏无结果时回退注入全文。
     """
     from lib.bible_utils import load_bible_file
     text = load_bible_file(novel_dir, "世界观.md")
@@ -166,17 +181,19 @@ def load_worldbuilding(novel_dir):
     if "理性边界" in sections:
         content = " ".join(sections["理性边界"])
         s = strip_md(content)
-        # Take the line about Lin Mo's limitation, skip table rows and artifacts
+        # Take the line about protagonist's limitation, skip table rows and artifacts
         lines_clean = [l for l in s.split(" ") if l.strip() and "|---" not in l and not l.startswith("|")]
         combined = " ".join(lines_clean).replace("|", "")
-        if "主角" in combined:
-            idx = combined.find("主角")
+        protagonist = _protagonist(novel_config or {})
+        if protagonist and protagonist in combined:
+            idx = combined.find(protagonist)
             end = combined.find("。", idx)
             if end > idx:
                 rules.append(combined[idx:end+1].strip())
 
     if "进化" in sections:
         content = "\n".join(sections["进化"])
+        protagonist = _protagonist(novel_config or {})
         taken = 0
         for line_n in content.split("\n"):
             s = strip_md(line_n.strip())
@@ -184,7 +201,7 @@ def load_worldbuilding(novel_dir):
                 continue
             if s.startswith("🔬") or s.startswith("- "):
                 continue
-            if s.startswith("但主角") or "主动选择异常方向" in s:
+            if (protagonist and s.startswith("但" + protagonist)) or "主动选择异常方向" in s:
                 rules.append(s)
                 taken += 1
             elif "反复做" in s or "变异是创伤" in s:
@@ -196,8 +213,18 @@ def load_worldbuilding(novel_dir):
             if sum(1 for r in rules if "进化" in r or "反复" in r or "变异是" in r or "主动" in r) >= 3:
                 break
 
-    # Core principle (always appended)
-    rules.append("核心原则：异常没有目的。不同角色有自己的解读（神罚/进化/噪声）。主角的AI思维让她主动分析规则→选择方向→让身体生长。把自己当实验对象优化。")
+    # Core principle (always appended)——可配置，无配置用通用兜底
+    core = (novel_config or {}).get("quality", {}).get("world_core_principle", "")
+    if not core:
+        core = ("世界有自己的运行规则。不同角色对异常的解读各不相同"
+                "（超自然/心理/科学）。保持世界观一致，异常有其内在逻辑。")
+    rules.append("核心原则：" + core)
+
+    if len(rules) <= 2:
+        # 蒸馏无结果（rules 只有标题 + 核心原则）→ 注入全文
+        full = load_bible_file(novel_dir, "世界观.md")
+        if full:
+            rules.append(full)
 
     result = "\n".join(rules)
     log.info(f"  [worldbuilding] {len(rules)-1} rules, {len(result)} chars")
@@ -238,15 +265,122 @@ def load_adapt_rules():
     return rules
 
 
+# ── Character state ───────────────────────────────────────────────────
+CHARACTER_STATE_FILE = "角色状态.json"
+
+def default_character_state():
+    return {
+        "chapter": 0,
+        "dimensions": {
+            "trust": 4,
+            "assertiveness": 2,
+            "caution": 2,
+            "moral_burden": 4
+        },
+        "history": [
+            {"chapter": 0, "changes": {}, "description": "初始状态。有秩序社会下成长的好孩子。"}
+        ]
+    }
+
+def load_character_state(novel_dir):
+    """Load role state from JSON file, return defaults if missing."""
+    path = Path(novel_dir) / "chapters" / CHARACTER_STATE_FILE
+    if not path.exists():
+        state = default_character_state()
+        # Save initial state so later chapters can read it
+        save_character_state(novel_dir, state)
+        log.info(f"  [state] 角色状态.json created (initial)")
+        return state
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except:
+        return default_character_state()
+
+def save_character_state(novel_dir, state):
+    """Save role state to JSON file."""
+    path = Path(novel_dir) / "chapters" / CHARACTER_STATE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+def apply_character_impact(spec, current_state):
+    """Apply character_impact (array of {dimension, delta, description}) from spec to state."""
+    impacts = spec.get("character_impact", [])
+    if not impacts:
+        return current_state, False
+
+    changed = False
+    chapter_num = spec.get("chapter", 0)
+    entry = {"chapter": chapter_num, "changes": {}, "description": ""}
+
+    for impact in impacts:
+        dim = impact.get("dimension")
+        delta = impact.get("delta", 0)
+        desc = impact.get("description", "")
+        if dim and dim in current_state["dimensions"]:
+            old = current_state["dimensions"][dim]
+            new_val = max(1, min(5, old + delta))
+            current_state["dimensions"][dim] = new_val
+            entry["changes"][dim] = delta
+            if desc:
+                entry["description"] += desc + " "
+            changed = True
+
+    if changed:
+        entry["description"] = entry["description"].strip()
+        current_state["history"].append(entry)
+        current_state["chapter"] = chapter_num
+
+    return current_state, changed
+
+def format_character_state(state, chapter_num=None):
+    """Format character state for system prompt injection."""
+    dims = state["dimensions"]
+    # Get changes since start of story
+    recent = [h for h in state["history"] if h["chapter"] > 0]
+    recent_descs = [h["description"] for h in recent if h["description"]]
+
+    # Hide the numerical scores — inject as qualitative description
+    lines = []
+    if dims["trust"] <= 2:
+        lines.append("她对陌生人普遍不信任。")
+    elif dims["trust"] >= 4:
+        lines.append("她对人有基本的信任倾向。")
+    else:
+        lines.append("她对陌生人持观望态度。")
+
+    if dims["assertiveness"] >= 4:
+        lines.append("她遇到问题会主动介入。")
+    elif dims["assertiveness"] <= 2:
+        lines.append("她倾向于先观察后行动，不主动介入。")
+
+    if dims["caution"] >= 4:
+        lines.append("她高度谨慎，风险规避意识强。")
+    elif dims["caution"] <= 2:
+        lines.append("她风险承受度较高。")
+
+    if dims["moral_burden"] >= 4:
+        lines.append("她的道德包袱重——不做某些事不是因为不想，是良心过不去。")
+    elif dims["moral_burden"] <= 2:
+        lines.append("她在做取舍时内疚感较轻。")
+
+    if recent_descs:
+        lines.append("\n最近重大变化：" + "；".join(recent_descs[-3:]))
+
+    return "\n".join(lines)
+
+
 # ── System prompt assembly ─────────────────────────────────────────────
-def build_system_prompt(novel_title, novel_dir):
+def build_system_prompt(novel_title, novel_dir, character_state=None,
+                        novel_config=None):
     """Assemble system prompt from active guidance rules (not prohibition-heavy).
 
     Character bible (bible/人设.md) is loaded if available to enrich character anchors.
     Worldbuilding rules (bible/世界观.md) are loaded if available.
+    Inject character state evolution if provided.
+    novel_config: novel_config.json 内容（主角名等），可为 None。
     """
     characters = load_character_bible(novel_dir)
-    world_rules = load_worldbuilding(novel_dir)
+    world_rules = load_worldbuilding(novel_dir, novel_config)
 
     # ── Core writing rules (always present, read from bible/) ──
     rules = load_bible_file(novel_dir, "写作法则.md")
@@ -257,6 +391,11 @@ def build_system_prompt(novel_title, novel_dir):
     # ── Banned words (read from bible/) ──
     forbidden = load_bible_file(novel_dir, "禁止词.md")
 
+    # ── Humanness reference (read from bible/人味参考.md) ──
+    human_ref = load_bible_file(novel_dir, "人味参考.md")
+    if human_ref:
+        human_ref = f"## 角色生活质感参考\n\n以下段落展示了目标的生活质感和人味密度。模型正文应达到类似的角色互动密度、职业细节嵌入、和内心活动。\n\n{human_ref}"
+
     # ── Character anchors (read from bible/人设.md → 模型注入锚点) ──
     inject = characters.get("模型注入锚点", "").strip()
     if inject:
@@ -264,7 +403,16 @@ def build_system_prompt(novel_title, novel_dir):
     elif fb := load_bible_file(novel_dir, "人物锚点.md"):
         char_section = fb
     else:
-        char_section = "## 人物锚点\n\n主角：28岁，AI博士。不抽烟。缺陷：计算强迫。"
+        # 无锚点来源——不硬编码人物，人物交给 spec/模型注入
+        char_section = ""
+
+    # ── 主角人称硬约束（机械正确性，同禁止词：防止模型混用 她/他）──
+    pronoun = protagonist_pronoun(novel_config or {})
+    pronoun_rule = ""
+    if pronoun:
+        protagonist = _protagonist(novel_config or {})
+        pronoun_rule = (f"主角{protagonist}的人称代词固定为「{pronoun}」，"
+                        "正文中涉及主角时一律用「" + pronoun + "」，不得混用或更换。")
 
     parts = [
         f"你是悬疑小说《{novel_title}》的写作者。",
@@ -272,8 +420,17 @@ def build_system_prompt(novel_title, novel_dir):
         physics,
         world_rules,
         char_section,
+        human_ref,
+        pronoun_rule,
         forbidden,
     ]
+
+    # Character state evolution (if available)
+    if character_state:
+        state_text = format_character_state(character_state)
+        if state_text.strip():
+            protagonist = _protagonist(novel_config or {})
+            parts.append(f"## {protagonist}当前性格状态（截至上一章结束）\n\n{state_text}")
 
     # Filter out empty sections
     parts = [p for p in parts if p.strip()]
@@ -282,50 +439,53 @@ def build_system_prompt(novel_title, novel_dir):
 
 
 # ── User prompt assembly ──────────────────────────────────────────────
-def build_normal_prompt(spec, sections, context_before=None):
-    """Build user prompt for a batch of normal-weight sections."""
+def build_normal_prompt(spec, sections, context_before=None, novel_config=None,
+                        section_len_hint=None):
+    """Build user prompt for a single normal-weight section（逐节顺序生成）。
+
+    context_before: 前一节真实生成文本（上文实稿）。模型紧接它继续写，
+    不能重复已写内容，写到本场景结束为止——场景边界由"一次调用=一个场景"结构锁死。
+    """
+    sec = sections[0]
     lines = [f"## {spec['title']}·写作需求", ""]
-    if "mood" in spec and spec["mood"]:
+    if spec.get("mood"):
         lines.append(f"情绪线：{spec['mood']}")
         lines.append("")
 
-    lines.append("世界观：悬疑+世界突变。主角28岁，和亲属在城市度假村。")
-    lines.append("第一章里异常不出现，只出异常。亲属感受不到异常，和主角形成落差。")
-    lines.append("")
+    # 世界观由 system prompt 从 bible/世界观.md 注入；这里不硬编码任何小说设定
+    if novel_config and novel_config.get("quality", {}).get("world_summary"):
+        lines.append(f"世界观：{novel_config['quality']['world_summary']}")
+        lines.append("")
 
     if context_before:
-        lines.append("### 上文概要")
+        lines.append("### 上文实稿（紧接这段继续写，保持连贯，不要重复或重新介绍已写内容）")
         lines.append(context_before)
         lines.append("")
 
-    lines.append("### 场景清单")
-    lines.append("以下是本章需要经过的场景，按时间顺序排列。把它们连成一段自然流动的叙述——不设分节，不自加标题，不作任何标记。")
+    lines.append(f"### {sec['id']}、{sec['subject']}")
+    lines.append(sec["description"])
+    if "tension_direction" in sec and sec["tension_direction"]:
+        lines.append(f"张力方向：{sec['tension_direction']}")
     lines.append("")
 
-    freeform = spec.get("freeform", False)
-    for sec in sections:
-        desc = sec["description"]
-        label = "[重点] " if sec.get("weight_hint") == "focus" else ""
-        if freeform and "tension_direction" in sec and sec["tension_direction"]:
-            desc += f"（方向：{sec['tension_direction']}）"
-        lines.append(f"- {label}{desc}")
-        lines.append("")
-
     lines.append("### 输出要求")
-    lines.append("直接写正文。不要注释、不要说明。不要分节标题，不要***，不要任何标记。全文是一段自然连贯的叙述。")
+    lines.append("承接上文，写本场景的内容，写到本场景结束为止。不要写本场景之后的内容。"
+                 "不要分节标题，不要***，不要任何标记。短段落，1-2句换行。")
+    if section_len_hint:
+        lines.append(f"本场景篇幅：约{section_len_hint}字，充分展开。")
     lines.append("")
 
     return "\n".join(lines)
 
 
-def build_expanded_prompt(spec, section, context_before=None):
-    """Build user prompt for a single expanded section."""
+def build_expanded_prompt(spec, section, context_before=None, section_len_hint=None):
+    """Build user prompt for a single expanded section（核心场景，独立调用展开）。"""
     lines = [f"## {spec['title']}·单独段落写作", ""]
-    lines.append(f"这一段是章节的核心段落，需要详细展开。")
+    lines.append("这一段是章节的核心段落，需要详细展开。")
     lines.append("")
 
     if context_before:
-        lines.append("### 上文概要")
+        lines.append("### 上文实稿（紧接这段继续写，保持连贯，不要重复或重新介绍已写内容）")
         lines.append(context_before)
         lines.append("")
 
@@ -333,13 +493,20 @@ def build_expanded_prompt(spec, section, context_before=None):
     lines.append(section['description'])
     lines.append("")
 
+    if "tension_direction" in section and section["tension_direction"]:
+        lines.append(f"张力方向：{section['tension_direction']}")
+        lines.append("")
+
     if "expanded_direction" in section and section["expanded_direction"]:
         lines.append("### 展开方向")
         lines.append(section["expanded_direction"])
         lines.append("")
 
     lines.append("### 输出要求")
-    lines.append("直接写正文。不要注释、不要说明。短段落，1-3句换行，场景转换用空行隔开。")
+    lines.append("承接上文，详细展开本段，写到本场景结束为止。不要写本场景之后的内容。"
+                 "不要分节标题，不要***。短段落，1-3句换行，场景转换用空行隔开。")
+    if section_len_hint:
+        lines.append(f"本段篇幅：约{section_len_hint}字，核心场景务必展开到位。")
     lines.append("")
 
     return "\n".join(lines)
@@ -347,7 +514,7 @@ def build_expanded_prompt(spec, section, context_before=None):
 
 # ── API call ──────────────────────────────────────────────────────────
 def call_api(system_prompt, user_prompt, route, silent=False):
-    """Call the generation API with SSE streaming."""
+    """Call the generation API with SSE streaming. 空响应自动重试 1 次。"""
     # Use shared SSE client at project root
     from server._api_client import sse_request
 
@@ -360,22 +527,31 @@ def call_api(system_prompt, user_prompt, route, silent=False):
         "maxTokens": route["maxTokens"],
     }
 
-    if silent:
-        result = sse_request(body)
-        return result if result else None
+    MAX_RETRIES = 1
+    for attempt in range(MAX_RETRIES + 1):
+        if attempt > 0:
+            log.warning(f"  [api] call_api 空响应，重试 1 次 ({route['model']})")
 
-    full = []
+        if silent:
+            result = sse_request(body)
+            if result:
+                return result
+            continue
 
-    def on_chunk(c):
-        print(c, end="", flush=True)
-        full.append(c)
+        full = []
 
-    result = sse_request(body, stream_callback=on_chunk)
-    if not result and not full:
-        return None  # error — consistent with original contract
-    if result and not "".join(full):
-        return result
-    return "".join(full) or None
+        def on_chunk(c):
+            print(c, end="", flush=True)
+            full.append(c)
+
+        result = sse_request(body, stream_callback=on_chunk)
+        if result and not "".join(full):
+            return result  # 流回调没收集到但响应有内容
+        text = "".join(full)
+        if text:
+            return text
+        # 空输出，进入重试
+    return None
 
 
 # ── Spec validation ─────────────────────────────────────────────────────
@@ -551,7 +727,7 @@ def anti_ai_check(text, rules):
         high_words.add(entry["word"])
     high_words -= fatal_words  # don't double-count
     # Un-prohibit ambiguity words — useful for suspense (模糊感)
-    high_words -= {"似乎", "仿佛", "好像", "不禁", "不由得", "下意识"}
+    high_words -= {"似乎", "仿佛", "好像", "不禁", "不由得", "下意识", "本能地"}
 
     # Check narrative lines (not in quotes/dialogue)
     in_dialogue = False
@@ -663,10 +839,309 @@ def auto_fix_violations(text, violations):
     return fixed
 
 
+# ── Quality check ─────────────────────────────────────────────────────
+
+
+
+def quality_check(text, spec, chapter_num, forbidden_words=None):
+    """Post-generation quality check. Returns list of issues dicts.
+
+    Checks: forbidden words, simile density (per 写作法则.md), length.
+    Does NOT check character layers (A/B/C) — those are measured against
+    the hand-written reference chapter (01_第一章.md), not artificial counts.
+    Each issue: {severity, category, message, fixable}.
+    forbidden_words: 禁止词列表，config 优先，无则用默认。
+    """
+    issues = []
+
+    # 1. 禁止词
+    forbidden = forbidden_words or ["突然", "忽然", "只见"]
+    for word in forbidden:
+        count = text.count(word)
+        if count > 0:
+            issues.append({
+                "severity": "error",
+                "category": "forbidden",
+                "message": f"禁止词「{word}」出现 {count} 次",
+                "fixable": False,
+            })
+
+    # 2. 比喻密度（写作法则：全章 ≤5 处）
+    simile_markers = ["像", "如同", "仿佛", "好似", "宛如"]
+    simile_count = sum(text.count(m) for m in simile_markers)
+    if simile_count > 5:
+        issues.append({
+            "severity": "warn",
+            "category": "simile",
+            "message": f"比喻密度: {simile_count} 个比喻标记词（建议 ≤5）",
+            "fixable": True,
+        })
+
+    # 3. 长度检查
+    target = spec.get("target_chars", 0)
+    if target:
+        actual = len(text)
+        ratio = actual / target
+        if ratio < 0.5:
+            issues.append({
+                "severity": "error",
+                "category": "length",
+                "message": f"篇幅过短: {actual} 字, 目标 {target} 字（{ratio:.0%}）",
+                "fixable": True,
+            })
+        elif ratio < 0.7:
+            issues.append({
+                "severity": "warn",
+                "category": "length",
+                "message": f"篇幅偏短: {actual} 字, 目标 {target} 字（{ratio:.0%}）",
+                "fixable": True,
+            })
+        elif ratio > 1.5:
+            issues.append({
+                "severity": "info",
+                "category": "length",
+                "message": f"篇幅偏长: {actual} 字, 目标 {target} 字（{ratio:.0%}）",
+                "fixable": False,
+            })
+
+    return issues
+
+
+def print_quality_issues(issues):
+    """Print quality report. Returns True if any error-level issues."""
+    if not issues:
+        log.info("[✓] Quality check: clean")
+        return True
+
+    errors = [i for i in issues if i["severity"] == "error"]
+    warns = [i for i in issues if i["severity"] == "warn"]
+    infos = [i for i in issues if i["severity"] == "info"]
+
+    log.info(f"\n[Quality check] {len(issues)} issue(s): "
+             f"{len(errors)} errors, {len(warns)} warnings, {len(infos)} info")
+    for issue in issues:
+        icon = {"error": "✗", "warn": "!", "info": "i"}
+        fixable = " [fixable]" if issue.get("fixable") else ""
+        log.info(f"  {icon[issue['severity']]} {issue['category']}: "
+                 f"{issue['message']}{fixable}")
+
+    return len(errors) == 0
+
+
+def auto_fix_quality(text, issues, system_prompt, route, reference_text=None):
+    """Fix quality issues via targeted API call. Returns (fixed_text, success).
+
+    If reference_text (hand-written ch1) is provided, includes it as a
+    quality target so the model knows what "natural" looks like.
+    """
+    fix_instructions = []
+    seen = set()
+
+    for issue in issues:
+        if not issue.get("fixable"):
+            continue
+        key = issue["category"]
+        if key in seen:
+            continue
+        seen.add(key)
+
+        if key == "simile":
+            fix_instructions.append(
+                "- 把部分「像XX」的比喻句改为直接描述，保留信息量、去掉比喻修辞"
+            )
+        elif key == "length":
+            fix_instructions.append(
+                "- 在不改变风格的前提下，适当扩展场景细节和感官描写"
+            )
+
+    if not fix_instructions:
+        return text, True
+
+    fix_parts = [
+        "请修改以下章节正文，要求：",
+        *fix_instructions,
+        "不要增加新的比喻句。不要改变叙事顺序和段落结构。",
+        "不要加注释说明。直接输出修改后的正文。",
+    ]
+    if reference_text:
+        fix_parts.insert(1, "\n参考目标质量标准——以下是一段人工写作的章节摘录（注意其自然感、节奏、细节密度）：\n```\n" + reference_text + "\n```\n")
+
+    fix_prompt = "\n".join(fix_parts) + "\n\n" + text
+
+    result = call_api(system_prompt, fix_prompt, route, silent=True)
+    if not result:
+        log.warning("  [!] Auto-fix API call failed, keeping original")
+        return text, False
+    if len(result) < len(text) * 0.5:
+        log.warning("  [!] Auto-fix output too short, keeping original")
+        return text, False
+
+    log.info(f"  Auto-fix applied: {len(text)} → {len(result)} chars")
+    return result, True
+
+
+def print_quality_summary(issues_before, issues_after):
+    """Summarize fix results."""
+    if not issues_before:
+        return
+    fixed_categories = set()
+    remaining = []
+    for i in issues_after:
+        remaining.append(i["category"])
+    for i in issues_before:
+        if i["category"] not in remaining and i.get("fixable"):
+            fixed_categories.add(i["category"])
+    if fixed_categories:
+        log.info(f"  Fixed: {', '.join(fixed_categories)}")
+    if remaining:
+        still = [i for i in issues_after if i["severity"] != "info"]
+        if still:
+            log.info(f"  Remaining: {len(still)} issue(s)")
+
+
+# ── Verve review (人味缺漏审) ──────────────────────────────────────────
+
+def verve_review(text, spec, novel_config=None):
+    """Review generated text for '人味' (liveliness/naturalness/humanness).
+
+    Checks dimensions that quantitative checks can't measure:
+    - Inner voice (A层): self-talk, sharp observations, wry humor
+    - 温情角色 interaction quality: specific actions vs generic dialogue
+    - C-layer actions: showing care through action, not words
+    - Sensory temperature variety: hot/cold/warm touch
+    - Humor/wry detachment
+    - Physical specificity (texture, sound, smell density)
+
+    novel_config: novel_config.json 内容（主角名/温情角色），可为 None。
+
+    Returns list of dicts: {severity, dimension, detail, suggestion}
+    """
+    config = novel_config or {}
+    protagonist = _protagonist(config)
+    raw_warm = config.get("quality", {}).get("warmth_char") or ""
+    warm_char = (character_name(config, raw_warm) if raw_warm
+                 else protagonist or "主角")
+
+    findings = []
+
+    # ── 1. Inner voice (A层) ──
+    inner_markers = ["心想", "这很", "真", "蠢", "无聊", "烦", "没道理",
+                     "这不", "算什么"]
+    inner_hits = sum(1 for m in inner_markers if m in text)
+    # Also check for self-questioning
+    question_marks = text.count("？")
+    # Heuristic: at least 2-3 inner voice moments per 3000 chars
+    inner_ratio = inner_hits / max(len(text), 1) * 3000
+    if inner_ratio < 1.5:
+        findings.append({
+            "severity": "warn",
+            "dimension": "A层内心独白",
+            "detail": f"内省标记仅 {inner_hits} 处（目标 2-3 处/3000字）",
+            "suggestion": f"增加{protagonist}式的短/锐/自嘲评价——对眼前事的即时反应, 1-3句不拖节奏"
+        })
+
+    # ── 2. 温情角色 interaction quality（warmth_char，默认主角） ──
+    mom_lines = [l for l in text.split("\n")
+                 if warm_char in l or (warm_char and warm_char[0] in l[:3])]
+    if mom_lines:
+        # Check for generic dialogue patterns
+        generic_mom = sum(1 for l in mom_lines
+                          for phrase in ["脸色", "没事吧", "怎么了", "早点睡", "早点"]
+                          if phrase in l)
+        specific_mom = sum(1 for l in mom_lines
+                           for phrase in [",", "着", "塑料袋", "拉链", "袋子", "手指",
+                                          "温热", "盐", "干贝", "碰撞", "沙沙"]
+                           if phrase in l)
+        if generic_mom >= specific_mom and specific_mom < 3:
+            findings.append({
+                "severity": "warn",
+                "dimension": f"{warm_char}温度",
+                "detail": f"{warm_char}对话倾向功能型（generic {generic_mom} vs specific {specific_mom}）",
+                "suggestion": f"{warm_char}的关心不用台词说出来——用具体小动作（抱怨/指关节温度/塑料袋声/物品安排）代替"
+            })
+    else:
+        findings.append({
+            "severity": "info",
+            "dimension": f"{warm_char}温度",
+            "detail": f"全章无{warm_char}出场",
+            "suggestion": f"如果本章有{warm_char}场景, 用具体动作代替情感表白"
+        })
+
+    # ── 3. C-layer actions (show not tell) ──
+    c_phrases = ["没", "停下", "走过去", "站在原地", "回头", "迟疑",
+                 "没说话", "没应声", "没回答", "接了"]
+    c_hits = sum(1 for p in c_phrases if p in text)
+    # Look for action-sequence patterns (做A→发现B→决定C)
+    action_seq = len(re.findall(r'[。]\s*她[^。]{2,30}[了]', text))
+    if c_hits < 2 and action_seq < 3:
+        findings.append({
+            "severity": "info",
+            "dimension": "C层动作",
+            "detail": f"C层信号词 {c_hits} 处（建议 >2）",
+            "suggestion": '增加1处"不说在乎但做"的动作——嘴上没反应, 下一幕做无关但有关的事'
+        })
+
+    # ── 4. Sensory temperature ──
+    temp_words = ["烫", "凉", "热", "温", "冰", "冷", "暖", "烧",
+                  "发烫", "发凉", "冰凉", "温热"]
+    temp_hits = sum(1 for w in temp_words if w in text)
+    if temp_hits < 2:
+        findings.append({
+            "severity": "warn",
+            "dimension": "温度触觉",
+            "detail": f"温度词仅 {temp_hits} 处",
+            "suggestion": f"增加1-2处体表温度感受（阳光晒/金属冰凉/风的温差/{warm_char}指关节温热）"
+        })
+
+    # ── 5. Humor / wry detachment ──
+    humor_markers = ["心想", "你说", "这", "卷", "懒", "吐槽",
+                     "蠢", "无聊", "没办法"]
+    humor_hits = sum(1 for m in humor_markers if m in text)
+    # Look for self-deprecating patterns
+    self_dep = len(re.findall(r'知道|承认|意识到|告诉自己', text))
+    if humor_hits < 3 and self_dep < 2:
+        findings.append({
+            "severity": "info",
+            "dimension": "幽默/自嘲",
+            "detail": f"未检测到明显的{protagonist}式自嘲或吐槽",
+            "suggestion": f"{protagonist}对眼前事的锋利评价是其标志——吐槽世界也吐槽自己"
+        })
+
+    # ── 6. Physical specificity density ──
+    # Check for multi-sensory details in each paragraph
+    sensory_markers = ["声", "味", "气", "湿", "黏", "涩", "刺",
+                       "痛", "酸", "麻", "僵", "肿", "干", "裂"]
+    sensory_hits = sum(1 for m in sensory_markers if m in text[:2000])
+    # First 2000 chars should have decent sensory density
+    if sensory_hits < 20:
+        findings.append({
+            "severity": "info",
+            "dimension": "感官密度",
+            "detail": f"前2000字感官信号约 {sensory_hits} 处",
+            "suggestion": "通过身体信号代替心理描写（呼吸消失/喉咙锁住/指尖发凉/闻到气味）"
+        })
+
+    return findings
+
+
+def print_verve_review(findings):
+    """Print verve review report."""
+    if not findings:
+        log.info("\n[verve] 人味审: clean (no suggestions)")
+        return
+
+    log.info(f"\n[verve] 人味缺漏审 ({len(findings)} 条建议):")
+    for f in findings:
+        icon = {"warn": "!", "info": "i"}
+        log.info(f"  {icon.get(f['severity'], '?')} {f['dimension']}: {f['detail']}")
+        log.info(f"    建议: {f['suggestion']}")
+
+
 # ── Chapter state extraction ───────────────────────────────────────────
 
 
-def update_state_file(state_path, chapter_num, extracted_text):
+def update_state_file(state_path, chapter_num, extracted_text,
+                      protagonist="主角"):
     """Update 章节状态.md with extracted chapter state."""
     clean_text = extracted_text.strip()
     target = f"## 第{chapter_num}章"
@@ -674,7 +1149,8 @@ def update_state_file(state_path, chapter_num, extracted_text):
 
     if not state_path.exists():
         header = "# 章节状态记录\n\n> 每完成一章自动更新。\n\n"
-        ref_table = "\n## 章节对照表\n\n| 章 | 时间跨度 | 地点 | 核心事件 | 主角异常阶段 |\n|---|---|---|---|---|\n"
+        ref_table = (f"\n## 章节对照表\n\n| 章 | 时间跨度 | 地点 | 核心事件 "
+                     f"| {protagonist}异常阶段 |\n|---|---|---|---|---|\n")
         state_path.write_text(
             header + new_section + "\n\n" + ref_table, encoding="utf-8"
         )
@@ -705,12 +1181,14 @@ def update_state_file(state_path, chapter_num, extracted_text):
     log.info(f"  [state] 章节状态.md updated for ch{chapter_num}")
 
 
-def update_chapter_state(novel_dir, chapter_num, chapter_text, spec=None):
+def update_chapter_state(novel_dir, chapter_num, chapter_text, spec=None,
+                         novel_config=None):
     """Extract state from generated chapter and update 章节状态.md.
 
-    确定性规则提取（无 LLM 调用）。
+    确定性规则提取（无 LLM 调用）。主角名从 novel_config 取。
     """
     state_path = Path(novel_dir) / "chapters" / "章节状态.md"
+    protagonist = _protagonist(novel_config or {})
 
     sections = spec.get("sections", [])
 
@@ -736,18 +1214,18 @@ def update_chapter_state(novel_dir, chapter_num, chapter_text, spec=None):
     if tension:
         parts.append(f"### 张力方向\n{tension}\n")
 
-    # 从 spec 推断主角状态
+    # 从 spec 推断主角状态（主角名来自 novel_config）
     char_hints = []
     for sec in sections:
         desc = sec.get("description", "")
-        for marker in ["主角", "她"]:
-            if marker in desc:
+        for marker in [protagonist, "她"]:
+            if marker and marker in desc:
                 first_sentence = desc.split("。")[0] if "。" in desc else desc[:60]
                 char_hints.append(first_sentence)
                 break
 
     if char_hints:
-        parts.append("### 主角状态（从 spec 推断）")
+        parts.append(f"### {protagonist}状态（从 spec 推断）")
         for h in char_hints[:2]:
             parts.append(f"- {h}")
         parts.append("")
@@ -770,106 +1248,20 @@ def update_chapter_state(novel_dir, chapter_num, chapter_text, spec=None):
                 parts.append("### 未解悬念（继承上一章）\n继承上一章未解悬念，等待后续回收。\n")
 
     result_text = "\n".join(parts)
-    update_state_file(state_path, chapter_num, result_text)
+    update_state_file(state_path, chapter_num, result_text,
+                      protagonist=protagonist)
     return []
 
 
 
 # ── Merge sections ─────────────────────────────────────────────────────
-def parse_normal_sections(text, normal_secs):
-    """Parse generated text into {section_id: content}.
+def merge_sections(section_texts):
+    """逐节顺序生成的文本按顺序拼接。
 
-    Each section starts with its id marker (一, 一、, 二, 二、...).
-    Returns dict of {section_id: text}.
+    一次调用=一个场景（见 Pipeline._phase_sequential），无需分节解析、
+    无需 fallback、无需去重——场景边界在生成时已结构锁死。
     """
-    result = {}
-    current_id = None
-    current_lines = []
-
-    for line in text.split("\n"):
-        stripped = line.strip()
-        matched_id = None
-        for sec in normal_secs:
-            if stripped == sec["id"] or stripped.startswith(sec["id"] + "、"):
-                matched_id = sec["id"]
-                break
-        if matched_id:
-            if current_id:
-                result[current_id] = "\n".join(current_lines)
-            current_id = matched_id
-            current_lines = [line]
-        else:
-            if current_id:
-                current_lines.append(line)
-
-    if current_id:
-        result[current_id] = "\n".join(current_lines)
-
-    return result
-
-
-def merge_sections(spec, normal_texts, expanded_texts):
-    """Merge multiple normal batch texts + expanded texts at correct positions."""
-    sections = spec["sections"]
-
-    # Freeform mode: continuous text, no section markers
-    if spec.get("freeform"):
-        text = "\n\n".join(t.strip() for t in normal_texts if t.strip())
-        expanded_secs = [s for s in sections if s.get("weight") == "expanded"]
-        if expanded_secs and expanded_texts:
-            for sec in expanded_secs:
-                if sec["id"] in expanded_texts:
-                    text += "\n\n###\n\n" + expanded_texts[sec["id"]].strip()
-        return text.strip()
-
-    normal_secs = [s for s in sections if s.get("weight", "normal") != "expanded"]
-
-    # Parse all normal batch texts
-    all_normal = {}
-    for text in normal_texts:
-        parsed = parse_normal_sections(text, normal_secs)
-        all_normal.update(parsed)
-
-    if not all_normal:
-        # Fallback: use first normal text as-is
-        fallback = normal_texts[0] if normal_texts else ""
-        log.warning("[!] Section parsing failed, using raw normal_text")
-        for sec in normal_secs:
-            all_normal[sec["id"]] = fallback
-        if not all_normal:
-            return ""
-
-    # Assemble in spec order
-    result_parts = []
-    for sec in sections:
-        sid = sec["id"]
-        if sec.get("weight") == "expanded":
-            if sid in expanded_texts:
-                result_parts.append(expanded_texts[sid])
-            else:
-                log.warning(f"[!] Missing expanded section {sid}")
-        else:
-            if sid in all_normal:
-                result_parts.append(all_normal[sid])
-
-    if not result_parts:
-        return normal_texts[-1] if normal_texts else ""
-
-    # Strip trailing *** and whitespace from each part
-    cleaned = []
-    for text in result_parts:
-        lines = text.rstrip().split("\n")
-        while lines and lines[-1].strip() == "***":
-            lines.pop()
-            if lines and lines[-1].strip() == "":
-                lines.pop()
-        cleaned.append("\n".join(lines).strip())
-
-    # Dedup: if section parsing failed and all parts are identical, return just one
-    if len(cleaned) > 1 and len(set(cleaned)) == 1:
-        cleaned = [cleaned[0]]
-
-    return "\n\n***\n\n".join(cleaned)
+    return "\n\n".join(t.strip() for t in section_texts if t.strip())
 
 
 # ── Engine tick bridge ─────────────────────────────────────────────────
@@ -977,7 +1369,7 @@ class Pipeline:
     """生成管线：spec → 生成 → merge → anti-AI → 输出。"""
 
     def __init__(self, spec, novel_dir, vault_reader, rules, system_prompt, output_path,
-                 chapter_context=""):
+                 chapter_context="", character_state=None, novel_config=None):
         self.spec = spec
         self.novel_dir = novel_dir
         self.vault_reader = vault_reader
@@ -986,87 +1378,80 @@ class Pipeline:
         self.output_path = output_path
         self.chapter_context = chapter_context
         self.chapter_num = spec.get("chapter", 1)
-
-        self.expanded_secs = [s for s in spec["sections"] if s.get("weight") == "expanded"]
-        self.normal_secs = [s for s in spec["sections"] if s.get("weight", "normal") != "expanded"]
-
-        # Group normal sections by batch
-        self.batch_groups = defaultdict(list)
-        for s in self.normal_secs:
-            self.batch_groups[s.get("batch", 0)].append(s)
+        self.character_state = character_state or default_character_state()
+        self.novel_config = novel_config or {}
+        self.sections = spec["sections"]
 
     def run(self) -> str:
-        """执行完整管线。返回最终文本。"""
+        """执行完整管线：逐节顺序生成 → 拼接 → anti-AI → 输出。返回最终文本。"""
         log.info(f"[pipeline] {self.spec['title']}  ->  {self.output_path.name}")
-        log.info(f"[pipeline] sections: {len(self.spec['sections'])}")
+        log.info(f"[pipeline] sections: {len(self.sections)}")
         log.info(f"[pipeline] system prompt: {len(self.system_prompt)} chars")
 
-        normal_texts = self._phase_normal_batches()
-        expanded_texts = self._phase_expanded_sections(normal_texts)
-        final_text = self._phase_merge_check(normal_texts, expanded_texts)
+        section_texts = self._phase_sequential()
+        final_text = self._phase_merge_check(section_texts)
         final_text = self._phase_antiai(final_text)
+        final_text = self._phase_quality_check(final_text, max_fix_rounds=1)
         self._phase_output(final_text)
+
+        # 角色状态更新（如果 spec 有 character_impact）
+        new_state, changed = apply_character_impact(self.spec, self.character_state)
+        if changed:
+            save_character_state(self.novel_dir, new_state)
+            log.info(f"  [state] 角色状态.json updated for ch{self.chapter_num}")
+
         return final_text
 
-    def _phase_normal_batches(self) -> list[str]:
-        """Phase 1: 生成 normal-weight 段落。"""
+    def _phase_sequential(self) -> list[str]:
+        """逐节顺序生成：一次调用=一个场景，前一节真实文本串接为后一节上文。
+
+        场景边界由结构锁死（每节独立调用），expanded 节由独立调用 + 展开方向
+        真正展开，杜绝旧管线的"批里写穿全章 + expanded 又重写一遍"重复。
+        """
         texts = []
-        for batch_id in sorted(self.batch_groups.keys()):
-            batch_secs = self.batch_groups[batch_id]
-            log.info(f"\n[pipeline] Phase 1: normal batch {batch_id}")
-            log.info(f"  sections: {[s['id'] for s in batch_secs]}")
-            log.info(f"  model: {MODEL_ROUTES['normal']['model']}")
+        prev_text = self.chapter_context  # 第1节上文 = vault 概要；之后 = 上一节真实文本
+        n = len(self.sections)
+        for sec in self.sections:
+            is_expanded = sec.get("weight") == "expanded"
+            route = MODEL_ROUTES["expanded"] if is_expanded else MODEL_ROUTES["normal"]
+            log.info(f"\n[pipeline] section {sec['id']} ({sec['subject']}) "
+                     f"weight={'expanded' if is_expanded else 'normal'}")
+            log.info(f"  model: {route['model']}")
             log.info("-" * 40)
 
-            normal_user = build_normal_prompt(self.spec, batch_secs, self.chapter_context)
-            log.info(f"  prompt: {len(normal_user)} chars")
+            # 每节篇幅软约束：expanded 用 target_words 或双倍均摊；normal 均摊
+            section_len_hint = None
+            if self.spec.get("target_chars"):
+                if is_expanded:
+                    hint = sec.get("target_words") or int(self.spec["target_chars"] / n * 2)
+                else:
+                    hint = int(self.spec["target_chars"] / n)
+                section_len_hint = max(150, hint)
 
-            text = call_api(self.system_prompt, normal_user, MODEL_ROUTES["normal"])
+            if is_expanded:
+                user = build_expanded_prompt(self.spec, sec, prev_text, section_len_hint)
+            else:
+                user = build_normal_prompt(self.spec, [sec], prev_text,
+                                           self.novel_config, section_len_hint)
+            log.info(f"  prompt: {len(user)} chars")
+
+            text = call_api(self.system_prompt, user, route)
             if text is None:
-                log.error(f"[ERROR] Phase 1 batch {batch_id} failed")
+                log.error(f"[ERROR] section {sec['id']} failed")
                 sys.exit(1)
             log.info(f"\n  -> {len(text)} chars")
             texts.append(text)
+
+            # 串接上文：之后每节的上文 = 该节真实文本（截断窗口防上下文膨胀）
+            prev_text = (text if len(text) <= _SECTION_CONTEXT_WINDOW
+                         else text[-_SECTION_CONTEXT_WINDOW:])
+
         return texts
 
-    def _phase_expanded_sections(self, normal_texts: list[str]) -> dict[str, str]:
-        """Phase 2: 生成 expanded-weight 段落。"""
-        expanded_texts = {}
-        if not self.expanded_secs:
-            return expanded_texts
-
-        log.info("\n[pipeline] Phase 2: expanded sections")
-
-        # Build context from chapter context + ALL normal batches
-        context_summary = ""
-        if self.chapter_context:
-            context_summary = self.chapter_context + "\n\n"
-        context_summary += "前文概要："
-        for sec in self.normal_secs:
-            context_summary += f"{sec['id']}、{sec['subject']}。"
-
-        for sec in self.expanded_secs:
-            log.info(f"  section: {sec['id']} ({sec['subject']})")
-            log.info(f"  model: {MODEL_ROUTES['expanded']['model']}")
-            log.info("-" * 40)
-
-            expanded_user = build_expanded_prompt(self.spec, sec, context_summary)
-            log.info(f"  prompt: {len(expanded_user)} chars")
-
-            result = call_api(self.system_prompt, expanded_user, MODEL_ROUTES["expanded"])
-            if result is None:
-                log.warning(f"[WARN] Section {sec['id']} failed, skipping")
-                continue
-            expanded_texts[sec["id"]] = result
-            log.info(f"\n  -> {len(result)} chars")
-
-        return expanded_texts
-
-    def _phase_merge_check(self, normal_texts: list[str],
-                            expanded_texts: dict[str, str]) -> str:
+    def _phase_merge_check(self, section_texts: list[str]) -> str:
         """Phase 3: merge + 字数检查 + 章节状态更新。"""
         log.info("\n[pipeline] Phase 3: merge")
-        final_text = merge_sections(self.spec, normal_texts, expanded_texts)
+        final_text = merge_sections(section_texts)
         char_count = len(final_text)
         log.info(f"  total: {char_count} chars")
 
@@ -1087,7 +1472,8 @@ class Pipeline:
         log.info("\n[pipeline] Phase 3b: state extraction & consistency check")
         try:
             state_warnings = update_chapter_state(self.novel_dir, self.chapter_num,
-                                                   final_text, self.spec)
+                                                   final_text, self.spec,
+                                                   self.novel_config)
             for w in state_warnings:
                 log.warning(f"  [consistency] {w}")
             if not state_warnings:
@@ -1110,6 +1496,67 @@ class Pipeline:
             # Re-check
             violations2 = anti_ai_check(text, self.rules)
             print_violations(violations2)
+
+        return text
+
+    def _phase_quality_check(self, text: str, max_fix_rounds: int = 1) -> str:
+        """Phase 5: 质量检查 + 自动修复循环。
+
+        检查禁止词/比喻密度/篇幅。
+        如需修复，加载手写 ch1 作为参考质量标准。
+        """
+        log.info("\n[pipeline] Phase 5: quality check")
+
+        forbidden = (self.novel_config.get("quality", {})
+                     .get("forbidden_words", None))
+        issues = quality_check(text, self.spec, self.chapter_num,
+                               forbidden_words=forbidden)
+        print_quality_issues(issues)
+
+        # 人味缺漏审（仅报告，不打断流程）
+        verve_findings = verve_review(text, self.spec, self.novel_config)
+        print_verve_review(verve_findings)
+
+        if not [i for i in issues if i.get("fixable")]:
+            return text
+
+        # 加载手写 ch1 作为 auto-fix 的参考质量标准（找 chapters/01_*.md）
+        reference_text = None
+        ref_path = None
+        chapters_dir = self.novel_dir / "chapters"
+        if chapters_dir.is_dir():
+            for p in sorted(chapters_dir.glob("01_*.md")):
+                ref_path = p
+                break
+        if ref_path:
+            reference_text = ref_path.read_text(encoding="utf-8")[:2000]
+            log.info(f"  [ref] 加载手写 ch1 作为修复参考 ({len(reference_text)} chars)")
+
+        for attempt in range(max_fix_rounds):
+            log.info(f"\n  Auto-fix attempt {attempt + 1}/{max_fix_rounds}...")
+            fixed, ok = auto_fix_quality(
+                text, issues, self.system_prompt, MODEL_ROUTES["normal"],
+                reference_text=reference_text,
+            )
+            if not ok:
+                break
+
+            # Re-check after fix
+            issues_after = quality_check(fixed, self.spec, self.chapter_num,
+                                         forbidden_words=forbidden)
+            print_quality_summary(issues, issues_after)
+            remaining = [i for i in issues_after if i.get("fixable")]
+
+            if not remaining:
+                log.info("[✓] All fixable issues resolved")
+                text = fixed
+                break
+
+            text = fixed
+            issues = issues_after
+
+        else:
+            log.warning(f"  [!] {len(remaining)} fixable issue(s) remain after {max_fix_rounds} round(s)")
 
         return text
 
@@ -1136,6 +1583,7 @@ def main():
     use_engine = False
     engine_tick_path = None
     engine_chapter = None
+    engine_novel = None
     spec_arg = None
 
     argv = sys.argv[1:]
@@ -1155,6 +1603,10 @@ def main():
             if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
                 i += 1
                 engine_chapter = int(argv[i])
+        elif arg == "--novel":
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                i += 1
+                engine_novel = argv[i]
         else:
             spec_arg = arg
         i += 1
@@ -1169,13 +1621,17 @@ def main():
             sys.exit(1)
 
         tick_data = load_tick_result(engine_tick_path)
-        novel = "示例"
+        # novel 优先级：--novel 标志 > tick 元数据 > 默认
+        novel = engine_novel or tick_data.get("novel", "") or "示例"
+        # framework 是通用包（项目根）；novel agents 在 novels/<novel>/agents，需小说目录入 sys.path
+        novel_dir = BASE / "novels" / novel
+        sys.path.append(str(novel_dir))
 
         # Try LLM-driven SpecBuilder first, fall back to mechanical build
         try:
-            from engine.spec_builder import SpecBuilder
-            builder = SpecBuilder()
-            spec = builder.build(tick_data, engine_chapter)
+            from framework.spec_builder import SpecBuilder
+            builder = SpecBuilder(novel_dir=str(novel_dir))
+            spec = builder.build(tick_data, engine_chapter, novel=novel)
         except ImportError:
             spec = None
             log.info("[engine] SpecBuilder not available, using mechanical build")
@@ -1247,8 +1703,15 @@ def main():
     # ── Load rules ──
     rules = load_adapt_rules()
 
+    # ── Character state ──
+    character_state = load_character_state(novel_dir)
+
+    # ── Novel config（框架与小说的接口）──
+    novel_config = load_novel_config(str(novel_dir))
+
     # ── System prompt ──
-    system_prompt = build_system_prompt(novel, novel_dir)
+    system_prompt = build_system_prompt(novel, novel_dir, character_state,
+                                        novel_config)
 
     # ── Chapter context ──
     chapter_context = ""
@@ -1262,7 +1725,8 @@ def main():
 
     # ── Run pipeline ──
     pipeline = Pipeline(spec, novel_dir, vault_reader_obj, rules,
-                        system_prompt, output_path, chapter_context)
+                        system_prompt, output_path, chapter_context, character_state,
+                        novel_config)
     pipeline.run()
 
 
