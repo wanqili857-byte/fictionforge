@@ -4,6 +4,7 @@
 
 ![python](https://img.shields.io/badge/Python-3.9+-3776AB)
 ![license](https://img.shields.io/badge/License-MIT-green)
+![ci](https://github.com/wanqili857-byte/fictionforge/actions/workflows/ci.yml/badge.svg)
 ![stars](https://img.shields.io/github/stars/wanqili857-byte/fictionforge)
 
 多智能体小说写作框架——**每个角色都有自己的脑子,每一章都有质量门禁。**
