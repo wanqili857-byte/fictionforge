@@ -1,0 +1,46 @@
+{
+  "title": "你的小说名",
+  "protagonist": "protagonist_key",
+  "protagonist_pronoun": "她/他/它（主角人称，system prompt 硬约束，防混用）",
+
+  "cast": [
+    {
+      "key": "protagonist_key",
+      "name": "主角名字",
+      "tier": 1,
+      "state_key": "protagonist_state",
+      "impl": "agents.agent_protagonist",
+      "class": "ProtagonistAgent"
+    },
+    {
+      "key": "supporting_char",
+      "name": "配角名字",
+      "tier": 2,
+      "impl": "framework.agent_lite",
+      "class": "LiteAgent"
+    }
+  ],
+
+  "pov_labels": {
+    "protagonist_key": "主角名字",
+    "protagonist_key_private": "主角名字（未知）"
+  },
+
+  "bible_files": [
+    "写作法则.md",
+    "人设.md",
+    "人物锚点.md",
+    "世界观.md"
+  ],
+
+  "quality": {
+    "anti_ai_words": ["某种", "显得", "仿佛", "略显", "几分"],
+    "simile_max": 5,
+    "warmth_char": "supporting_char",
+    "world_summary": "一句话世界观（可选，注入 normal prompt）",
+    "world_core_principle": "世界观核心原则（可选，引擎世界模拟注入）",
+    "forbidden_words": ["突然", "忽然", "只见"],
+    "anomaly_words": ["异常", "不对", "消失", "失灵", "信号", "错误"],
+    "perception_stages": ["", "初现", "怀疑", "确认", "紧迫", "深化", "超越"]
+  }
+}
