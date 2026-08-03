@@ -351,6 +351,8 @@ def build_normal_prompt(spec, sections, context_before=None, novel_config=None,
     lines.append(sec["description"])
     if "tension_direction" in sec and sec["tension_direction"]:
         lines.append(f"张力方向：{sec['tension_direction']}")
+    if "divergence_vibe" in sec and sec["divergence_vibe"]:
+        lines.append(f"发散方向：{sec['divergence_vibe']}")
     lines.append("")
 
     lines.append("### 输出要求")
@@ -380,6 +382,10 @@ def build_expanded_prompt(spec, section, context_before=None, section_len_hint=N
 
     if "tension_direction" in section and section["tension_direction"]:
         lines.append(f"张力方向：{section['tension_direction']}")
+        lines.append("")
+
+    if "divergence_vibe" in section and section["divergence_vibe"]:
+        lines.append(f"发散方向：{section['divergence_vibe']}")
         lines.append("")
 
     if "expanded_direction" in section and section["expanded_direction"]:
