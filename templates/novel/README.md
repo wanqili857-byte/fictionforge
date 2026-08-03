@@ -41,6 +41,27 @@
    python tests/test_engine_core.py
    ```
 
+## 内容包放仓库外（私有连载）
+
+内容包默认放 `novels/<你的小说>/`。但你的小说若是**私有不公开**（连载中、有版权），不要放这个 public 仓库里——放独立目录，spec 声明 `novel_dir` 指向它：
+
+```json
+{
+  "novel": "你的小说名",
+  "novel_dir": "..",
+  "chapter": 1,
+  ...
+}
+```
+
+- `novel_dir` **相对路径以 spec 所在目录为锚**：`".."` = 内容包根目录（bible / vault / chapters 都在那里）
+- 绝对路径也行：`"/Users/you/novels/灰色频段"`
+- 没写 `novel_dir` 时照旧落回 `novels/<novel>/`
+- spec 的 `output` 本来就是相对 spec 目录，正文自动写回内容包自己的 `chapters/`
+- 跑法：`python scripts/gen.py ~/novels/你的小说/specs/ch1.json`
+
+这样引擎代码公开、你的内容私有，两套 git 互不相干。
+
 ## 最低可用包
 
 只想试 gen.py 单管线（不跑引擎），cast 可以留空或只留主角：

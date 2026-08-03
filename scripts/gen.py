@@ -1547,6 +1547,12 @@ def main():
     novel = spec["novel"]
     title = spec["title"]
     novel_dir = BASE / "novels" / novel
+    # 内容包可在仓库外（私有连载库）：spec 声明 novel_dir 即指向外部。
+    # 相对路径以 spec 所在目录为锚（"novel_dir": ".." = 内容包根目录）；
+    # 缺省落回 novels/<novel>（示例/默认布局）。engine tick 模式不受影响。
+    if not use_engine and spec.get("novel_dir"):
+        nd = Path(spec["novel_dir"])
+        novel_dir = (nd if nd.is_absolute() else spec_path.parent / nd).resolve()
 
     # ── Vault reader ──
     vault_reader_obj = None
