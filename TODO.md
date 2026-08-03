@@ -21,11 +21,11 @@
 
 ## ⬜ 待办
 
-- [ ] **理论心智层** — 每角色「知识状态 vs 世界真相」对照表 + 「我认为 X 知道什么」，type-A 反转的正式信息差建模
-- [x] **`divergence_vibe` 接线** — 每节注入「发散方向」，normal/expanded 两处 prompt 都读（2026-08-03）
-- [ ] **顶层协调器** — 判断每章走 gen.py pipeline、engine tick、还是混合模式
-- [ ] **引擎 → spec_builder → gen.py 全链路真跑** — `--use-engine` 只验证过数据流，未真 LLM 跑
-- [ ] **静默轨道 agents** — 示例小说 Tier1 主角 agent 待写（见 `novels/静默轨道/agents/README.md`）
+- [ ] **理论心智层** — 每角色「知识状态 vs 世界真相」对照表 + 「我认为 X 知道什么」，type-A 反转的正式信息差建模　`[v0.2.0]`
+- [x] **`divergence_vibe` 接线** — 每节注入「发散方向」，normal/expanded 两处 prompt 都读（2026-08-03）　`[v0.1.1]`
+- [ ] **顶层协调器** — 判断每章走 gen.py pipeline、engine tick、还是混合模式　`[v0.2.0]`
+- [ ] **引擎 → spec_builder → gen.py 全链路真跑** — `--use-engine` 只验证过数据流，未真 LLM 跑　`[v0.3.0]`
+- [ ] **静默轨道 agents** — 示例小说 Tier1 主角 agent 待写（见 `novels/静默轨道/agents/README.md`）　`[v0.3.0]`
 
 ## 参考
 
