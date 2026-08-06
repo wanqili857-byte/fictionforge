@@ -23,6 +23,20 @@ TickRunner 编排一个弧（数章）            gen.py 消费章节 spec
 
 `gen.py --use-engine <tick.json> --chapter N` 把两条管线接起来：引擎 tick → SpecBuilder(LLM) 设计章节 spec → 生成管线出正文。
 
+## 顶层协调器（v0.2.0）
+
+每章经 `ChapterCoordinator`（`framework/chapter_coordinator.py`）选管线路径：
+
+- **gen**：手写 spec → 理论心智层标注（`info_gaps` 注入 prompt）→ 推进知识 → gen.py
+- **engine**：TickRunner tick → JSON 落盘，不生成正文
+- **hybrid**：engine tick → 机械 spec → 理论心智层标注 → gen.py
+
+配置分层（novel_config.pipeline + arc + CLI）：`cli > arc.pipeline_mode > chapter_overrides > default_mode > "gen"`。
+CLI：`python3 scripts/run_chapter.py novels/<小说> --chapter N [--mode ...]`。
+
+理论心智层数据源是 `bible/真相表.md`（作者维护的权威事实表，声明于 `theory_of_mind.truth_table`，
+**不进** bible_files、不 verbatim 注入——只有推导出的 `info_gaps` 进 prompt）。真相表缺失/禁用时静默降级，行为与 v0.1.x 一致。
+
 ## 组件职责
 
 | 组件 | 职责 | 与小说耦合 |
@@ -34,8 +48,10 @@ TickRunner 编排一个弧（数章）            gen.py 消费章节 spec
 | `env_state.py` | 环境状态：时间/天气/恐慌聚合/基础设施/变异等级 | 无 |
 | `world_sim.py` | 世界模拟：政府/媒体/公众/基础设施对事件的反应 | 无 |
 | `narrator.py` | 多视角事件合成；场景聚类拆章；对手戏/异常强度权重 | 读 novel_config（pov_labels/cast_names） |
-| `spec_builder.py` | LLM 章节结构设计：三节功能、三场景绑定、反转落点锚 | 读 novel_config + bible/人物锚点.md |
-| `vault_sync.py` | vault 回写、MemoryStore 序列化 | 无 |
+| `spec_builder.py` | LLM 章节结构设计：三节功能、三场景绑定、反转落点锚；`build_spec_mechanical`（机械 spec，hybrid 路径用） | 读 novel_config + bible/人物锚点.md |
+| `theory_of_mind.py` | 理论心智层：真相表解析、知识vs真相、跨角色 ToM、A型反转追踪、`info_gaps` 标注 | 读 novel_config + bible/真相表.md |
+| `chapter_coordinator.py` | 顶层协调器：每章选管线路径（gen/engine/hybrid），依赖注入可单测 | 无（读 novel_config） |
+| `vault_sync.py` | vault 回写、MemoryStore 序列化（含 beliefs/knowledge/tom） | 无 |
 | `gen.py` | 生成管线 + 质量门禁；主角名/温情角色从 novel_config 读 | 读 novel_config |
 | `novels/<n>/agents/*.py` | 小说专属角色 agent（Tier1 继承 Agent；Tier2 用 LiteAgent） | 全部（这是内容包） |
 | `novels/<n>/bible/*.md` | system prompt 注入内容（写作法则/人设/世界观/人物锚点） | 全部（这是内容包） |
@@ -52,6 +68,8 @@ arc_config (arcs/*.md frontmatter)
 │  2. _init_agents               │  ← 按 novel_config.cast importlib 实例化
 │     Tier1: Cls.from_vault_state │     小说专属 agent (novels/<n>/agents)
 │     Tier2: LiteAgent(name, ...) │
+│  2.5 _restore_agent_epistemics │  ← 恢复 beliefs/knowledge/tom（vault）
+│                                  │     knowledge=已确认事实, tom=跨角色认知
 │  3. EnvState.from_vault_reader  │
 │  4. WorldSim.run → world_output │
 │  5. _build_world_structure     │  → public/traces/hidden 三层
@@ -61,7 +79,11 @@ arc_config (arcs/*.md frontmatter)
 │     └─ 轨迹提取(含 private)     │
 │     └─ 场景聚类(天×地点)拆章     │  → suggested_chapter_split(含 events)
 │     └─ hooks/state/reversal    │  → TickResult
-│  9. MemoryStore 持久化记忆      │
+│  8.1 理论心智层                │  ← sync_knowledge_from_beliefs
+│                                  │   → propagate_tom_all（同场共现/告知/信任衰减）
+│                                  │   → sync_unknowns
+│                                  │   → detect_type_a → TickResult.type_a_events
+│  9. MemoryStore 持久化记忆      │  ← 含 beliefs/knowledge/tom
 │ 10. VaultSync / 输出 tick JSON  │
 └───────────────────────────────┘
 ```

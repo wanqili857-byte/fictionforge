@@ -4,7 +4,7 @@
 
 ## 目录结构
 
-- `framework/` — 通用引擎（tick_runner / agent_base / agent_lite / scene_director / narrator / spec_builder / world_sim / vault_sync / percept_filter / env_state / novel_config）
+- `framework/` — 通用引擎（tick_runner / agent_base / agent_lite / scene_director / narrator / spec_builder / world_sim / vault_sync / percept_filter / env_state / novel_config / theory_of_mind / chapter_coordinator）
 - `novels/<小说>/` — 内容包，`novel_config.json` 是框架与小说的唯一接口
 - `lib/`、`scripts/gen.py`、`server/` — 生成管线与代理
 - `tests/` — 框架单元测试（无 LLM / 无 I/O 依赖）
@@ -39,6 +39,12 @@
 system prompt 注入内容统一在 `bible/` 目录维护，gen.py 自动读取。改约束只改 bible 文件，不动代码。内容包通过 `novel_config.json` 声明 bible 注入清单。
 
 gen.py 以外的调用（手动润色/测试）必须手动注入 bible 约束到 system prompt。润色指令禁止用宽泛描述（"润色一下"）。改用精确指令（如"在不增加比喻密度的前提下，增强感官密度和身体信号"），否则模型会自由发挥其默认"好文笔"模式。
+
+## 认知反转引擎（v0.2.0）
+
+- **真相表**：`bible/真相表.md`，作者维护的权威事实表，`novel_config.json` 的 `theory_of_mind.truth_table` 声明。**不进 bible_files、不 verbatim 注入**——只有推导出的 `info_gaps` 进 prompt（模型全知会泄谜底）。`false` 行 = 广泛流传但错误的认识（B 型素材）。
+- **知识 vs 真相**：每角色 `knowledge`（已确认事实）/ `tom`（「我认为 X 知道什么」）/ `unknown_to_character`。A 型反转 = 读者确认之前只敢猜的事；B 型 = 之前以为对的事实是错的。
+- **顶层协调器**：每章走 gen（手写 spec → info_gaps 标注 → 推进知识 → 生成）/ engine（tick JSON 落盘，不生成正文）/ hybrid（tick → 机械 spec → 标注 → 生成）。`scripts/run_chapter.py` 调用。配置分层：`cli > arc.pipeline_mode > chapter_overrides > default_mode > gen`。
 
 ## 写作技法参考（悬疑/恐怖章节专用，其他章节不适用。持续补充）
 

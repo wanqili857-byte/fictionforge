@@ -15,8 +15,11 @@
 
 **定位：** 信息差正式建模，反转从碰运气变可设计
 
-- 理论心智层 —— 每角色「知识状态 vs 世界真相」对照表 + 「我认为 X 知道什么」，type-A 反转的正式信息差建模
-- 顶层协调器 —— 每章选管线路径（gen.py pipeline / engine tick / 混合）
+- 理论心智层 —— `bible/真相表.md`（作者维护权威事实）→ 每角色「知识 vs 真相」对照 + 跨角色 ToM + type-A 反转追踪；`info_gaps` 标注注入 spec（不进 bible_files，不泄谜底）
+- 顶层协调器 —— 每章选管线路径：gen / engine / hybrid，配置分层（cli > arc > 章节覆盖 > 默认 > gen）
+- 认知持久化 —— MemoryStore 落盘 beliefs/knowledge/tom，补「信念不落盘」缺口
+- 测试 4 套件 —— engine_core + split_scenes + theory_of_mind（30）+ chapter_coordinator（12）
+- CLI —— `scripts/run_chapter.py`，零新增 LLM 调用，全部确定性逻辑（引擎真 LLM 跑留 v0.3.0）
 
 ## v0.3.0 — 引擎落地
 

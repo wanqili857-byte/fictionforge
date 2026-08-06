@@ -19,13 +19,18 @@
 - [x] **弧末反思巩固** — `Agent.reflect()` 记忆压缩为高阶洞察，tick_runner 阶段 8.25（仅 Tier1，失败不中断）
 - [x] 回归：test_engine_core 24/24、test_split_scenes 25/25、dry-run OK
 
+### 认知反转引擎（v0.2.0，2026-08-06）
+
+- [x] **理论心智层** — `framework/theory_of_mind.py`：真相表解析 + 知识vs真相 + 跨角色 ToM + A型反转追踪 + `info_gaps` 标注；测试 30/30
+- [x] **认知持久化** — MemoryStore 落盘 beliefs/knowledge/tom（`load_agent_state` 返回全量）
+- [x] **顶层协调器** — `framework/chapter_coordinator.py` + `scripts/run_chapter.py`：gen/engine/hybrid 三路分发，配置分层（cli > arc > override > default > gen）；测试 12/12
+- [x] 回归：engine_core 24/24、split_scenes 26/26
+
 ## ⬜ 待办
 
-- [ ] **理论心智层** — 每角色「知识状态 vs 世界真相」对照表 + 「我认为 X 知道什么」，type-A 反转的正式信息差建模　`[v0.2.0]`
-- [x] **`divergence_vibe` 接线** — 每节注入「发散方向」，normal/expanded 两处 prompt 都读（2026-08-03）　`[v0.1.1]`
-- [ ] **顶层协调器** — 判断每章走 gen.py pipeline、engine tick、还是混合模式　`[v0.2.0]`
 - [ ] **引擎 → spec_builder → gen.py 全链路真跑** — `--use-engine` 只验证过数据流，未真 LLM 跑　`[v0.3.0]`
 - [ ] **静默轨道 agents** — 示例小说 Tier1 主角 agent 待写（见 `novels/静默轨道/agents/README.md`）　`[v0.3.0]`
+- [ ] **真相对照的 B 型反转素材** — 真相表加 `false` 行（作者在认知反转落点埋错误认识）　`[v0.3.0]`
 
 ## 参考
 
