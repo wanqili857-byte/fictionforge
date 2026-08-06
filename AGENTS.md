@@ -1,6 +1,36 @@
 # AI Novel Generation Framework
 
-框架与小说解耦：`framework/` 是通用引擎，`novels/<小说>/` 是可替换的内容包。换一本小说只改内容，不改框架。
+## 3 分钟上手（新用户从这开始）
+
+这是**多智能体小说写作框架**：每个角色一个 agent（记忆/信念/视角各自独立），导演级叙事合成章节，质量门禁自动返工。你的工作：**定走向、审 spec、拍板**，写正文的事交给它。
+
+**首次运行（照着做，5 步）：**
+
+1. 检查 Python：`python3 --version`（要 3.9+）
+2. 装依赖（就一个）：`pip install requests`
+3. 配 API key：在**你自己的用户目录**建 `~/.env`，写一行 `DEEPSEEK_API_KEY=sk-你的key`（也可用 `DASHSCOPE_API_KEY`=阿里云百炼、`OPENROUTER_API_KEY`。**国内不用翻墙**：DeepSeek 和百炼都国内直连）。`~/.env` 在项目外面，不会被提交。
+4. 起 LLM 代理：`python3 server/gen_proxy.py`（保持开着）
+5. 跑通示例：`python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` —— 看到生成一章正文，环境就通了
+
+**写你自己的小说（二选一）：**
+
+- 最省事：直接跟当前这个 AI 助手说「我要写一本 **xxx 题材** 的小说，主角是 **xxx**」，让它按 `templates/novel/` 帮你搭内容包
+- 手动：复制 `templates/novel/` 为 `novels/<你的小说>/`，填 `novel_config.json` + `bible/`，见 `templates/novel/README.md`
+
+**你可以让这个 AI 助手帮你做的典型事情：**
+
+- 「帮我的小说搭内容包」 / 「起一个新角色，写他的人格三层」
+- 「设计第 N 章的 spec（标好 A/B 反转落点）」
+- 「按这份 spec 生成正文」 / 「检查这章有没有 AI 腔、禁词、比喻密度超标」
+- 「这章写歪了，帮我重写第二、三节」
+
+每章固定流程（不可跳过）：**Design spec → 审 spec → 生成 → 审 + 改 → 定稿 → 更新章节状态**。你的角色是导演，不是打字员。
+
+---
+
+## 框架与小说解耦（实现背景，普通使用可跳过）
+
+`framework/` 是通用引擎，`novels/<小说>/` 是可替换的内容包。换一本小说只改内容，不改框架。
 
 ## 目录结构
 
