@@ -4,13 +4,17 @@
 
 这是**多智能体小说写作框架**：每个角色一个 agent（记忆/信念/视角各自独立），导演级叙事合成章节，质量门禁自动返工。你的工作：**定走向、审 spec、拍板**，写正文的事交给它。
 
-**首次运行（照着做，5 步）：**
+**首次运行（二选一）：**
 
-1. 检查 Python：`python3 --version`（要 3.9+）
-2. 装依赖（就一个）：`pip install requests`
-3. 配 API key：在**你自己的用户目录**建 `~/.env`，写一行 `DEEPSEEK_API_KEY=sk-你的key`（也可用 `DASHSCOPE_API_KEY`=阿里云百炼、`OPENROUTER_API_KEY`。**国内不用翻墙**：DeepSeek 和百炼都国内直连）。`~/.env` 在项目外面，不会被提交。
-4. 起 LLM 代理：`python3 server/gen_proxy.py`（保持开着）
-5. 跑通示例：`python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` —— 看到生成一章正文，环境就通了
+- **一键（推荐）**：macOS/Linux 在项目根目录执行 `./start.sh`；Windows 双击 `start.bat`。自动完成：检查 Python → 装依赖 → 提示配 key → 起代理 → 跑通示例。
+- **手动 5 步**（同样有效）：
+  1. 检查 Python：`python3 --version`（要 3.9+）
+  2. 装依赖（就一个）：`pip install requests`
+  3. 配 API key：在**你自己的用户目录**建 `~/.env`，写一行 `DEEPSEEK_API_KEY=sk-你的key`（也可用 `DASHSCOPE_API_KEY`=阿里云百炼、`OPENROUTER_API_KEY`）。`~/.env` 在项目外面，不会被提交。
+  4. 起 LLM 代理：`python3 server/gen_proxy.py`（保持开着）
+  5. 跑通示例：`python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` —— 看到生成一章正文，环境就通了
+
+> **不用翻墙**：DeepSeek 和阿里百炼都国内直连。正文默认走海外 Kimi（需科学上网）；start 脚本会检测你只有国内 key 时，自动把正文切到 DeepSeek/百炼并写入 `~/.fictionforge_routes.json`（之后手动跑 `gen.py` 也生效，想切回海外就删掉该文件）。
 
 **写你自己的小说（二选一）：**
 

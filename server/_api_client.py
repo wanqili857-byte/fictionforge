@@ -6,6 +6,7 @@ _api_client.py — SSE 流式客户端（gen.py + engine/ 共享）。
 """
 
 import json
+import os
 import sys
 import urllib.request
 from typing import Optional
@@ -15,7 +16,9 @@ API_URL = "http://localhost:3002/api/chat"
 # ── 模型路由表（唯一权威来源） ──────────────────────────────────────────
 # gen.py 和 engine/api.py 都从本模块导入
 # 如需增删模型/路线，只改此处
-MODEL_ROUTES = {
+# 默认 normal/expanded（章节正文）走 OpenRouter/Kimi —— 海外，需科学上网。
+# 不用翻墙时改走国内供应商（DeepSeek/百炼），见下方 _apply_route_overrides。
+_RAW_ROUTES = {
     "outline":  {"provider": "deepseek", "model": "deepseek-v4-flash",
                  "temperature": 0.7, "maxTokens": 2048},
     "normal":   {"provider": "openrouter", "model": "moonshotai/kimi-k2.6",
@@ -34,6 +37,40 @@ MODEL_ROUTES = {
     "qwen-long":  {"provider": "dashscope", "model": "qwen-max",
                  "temperature": 0.7, "maxTokens": 16384},
 }
+
+
+# ── 路线覆盖（可选，默认行为不变） ──────────────────────────────────────
+# 只改个别路线的 provider/model，温度/长度等其余字段保持默认。优先级：环境变量 > 用户文件。
+# 1) 用户文件 ~/.fictionforge_routes.json（start.sh / start.bat 自动写入，持久生效）：
+#      {"normal": {"provider": "deepseek", "model": "deepseek-v4-flash"},
+#       "expanded": {"provider": "deepseek", "model": "deepseek-v4-flash"}}
+# 2) 环境变量（临时，仅本次命令生效，优先级最高）：
+#      FF_NORMAL_PROVIDER=deepseek FF_NORMAL_MODEL=deepseek-v4-flash
+def _apply_route_overrides(routes):
+    routes = {k: dict(v) for k, v in routes.items()}
+    try:
+        with open(os.path.expanduser("~/.fictionforge_routes.json"), encoding="utf-8") as f:
+            file_ov = json.load(f)
+    except Exception:
+        file_ov = {}
+    for name, cfg in routes.items():
+        patch = {}
+        file_cfg = file_ov.get(name)
+        if isinstance(file_cfg, dict):
+            for key in ("provider", "model"):
+                if file_cfg.get(key):
+                    patch[key] = file_cfg[key]
+        env_prefix = f"FF_{name.upper().replace('-', '_')}"
+        for key in ("provider", "model"):
+            v = os.environ.get(f"{env_prefix}_{key.upper()}")
+            if v:
+                patch[key] = v
+        if patch:
+            routes[name] = {**cfg, **patch}
+    return routes
+
+
+MODEL_ROUTES = _apply_route_overrides(_RAW_ROUTES)
 
 
 def sse_request(body: dict, stream_callback=None) -> Optional[str]:
