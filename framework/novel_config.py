@@ -90,3 +90,50 @@ def state_keys(config: dict) -> dict:
         c["key"]: c.get("state_key", f"{c.get('key', '?')}_state")
         for c in tier_cast(config, 1)
     }
+
+
+# ── 顶层协调器 / 理论心智层配置 ──────────────────────────────────────
+
+_PIPELINE_MODES = ("gen", "engine", "hybrid")
+
+
+def get_pipeline(config: dict) -> dict:
+    """pipeline 配置段。缺省空 dict。"""
+    return config.get("pipeline", {}) if isinstance(config, dict) else {}
+
+
+def get_pipeline_mode(config: dict, chapter_num: int,
+                      arc_config: dict = None, cli_mode: str = None) -> str:
+    """解析本章的管线模式。
+
+    优先级（高→低）：
+      cli_mode > arc_config.pipeline_mode > chapter_overrides > default_mode > "gen"
+    非法值一律回退 "gen"。
+    """
+    if cli_mode in _PIPELINE_MODES:
+        return cli_mode
+    if isinstance(arc_config, dict) and arc_config.get("pipeline_mode") in _PIPELINE_MODES:
+        return arc_config["pipeline_mode"]
+    pipeline = get_pipeline(config)
+    overrides = pipeline.get("chapter_overrides", {})
+    if isinstance(overrides, dict):
+        val = overrides.get(str(chapter_num), overrides.get(chapter_num))
+        if val in _PIPELINE_MODES:
+            return val
+    default = pipeline.get("default_mode")
+    return default if default in _PIPELINE_MODES else "gen"
+
+
+def get_theory_of_mind(config: dict) -> dict:
+    """theory_of_mind 配置段。缺省空 dict。"""
+    return config.get("theory_of_mind", {}) if isinstance(config, dict) else {}
+
+
+def get_tom_enabled(config: dict) -> bool:
+    """理论心智层开关。缺省 True（无配置时推理优先）。"""
+    return bool(get_theory_of_mind(config).get("enabled", True))
+
+
+def get_truth_table_file(config: dict) -> str:
+    """真相表文件名。缺省 "真相表.md"。"""
+    return get_theory_of_mind(config).get("truth_table", "真相表.md") or "真相表.md"

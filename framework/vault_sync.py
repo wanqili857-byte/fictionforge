@@ -22,6 +22,33 @@ from lib.log import get_logger
 log = get_logger("engine.vault_sync")
 
 
+def _belief_to_dict(b) -> dict:
+    """Belief dataclass → dict（MemoryStore 持久化用）。"""
+    return {
+        "subject": b.subject,
+        "proposition": b.proposition,
+        "confidence": b.confidence,
+        "source_memories": list(b.source_memories),
+        "created_at_chapter": b.created_at_chapter,
+        "status": b.status,
+        "revised_evidence": b.revised_evidence,
+    }
+
+
+def _belief_from_dict(d: dict):
+    """dict → Belief。缺字段给默认值，容忍旧数据。"""
+    from .agent_base import Belief
+    return Belief(
+        subject=d.get("subject", "?"),
+        proposition=d.get("proposition", ""),
+        confidence=d.get("confidence", 0.0),
+        source_memories=list(d.get("source_memories", [])),
+        created_at_chapter=d.get("created_at_chapter", 0),
+        status=d.get("status", "active"),
+        revised_evidence=d.get("revised_evidence", ""),
+    )
+
+
 class MemoryStore:
     """Agent memory 跨 tick 持久化。
 
@@ -33,8 +60,13 @@ class MemoryStore:
         self.storage_dir = Path(vault_dir) / "engine_memories"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
 
-    def save(self, agent_name: str, memories: list, arc_id: str = ""):
-        """序列化 agent memories 到 JSON 文件。"""
+    def save(self, agent_name: str, memories: list, arc_id: str = "",
+             beliefs: list = None, knowledge: dict = None, tom: dict = None):
+        """序列化 agent 全量状态到 JSON 文件。
+
+        beliefs/knowledge/tom 是理论心智层的跨 tick 状态；
+        不传则仅存 memories（向后兼容）。
+        """
         path = self.storage_dir / f"{agent_name}.json"
         data = {
             "agent": agent_name,
@@ -52,17 +84,30 @@ class MemoryStore:
                 for m in memories
             ],
         }
+        if beliefs is not None:
+            data["beliefs"] = [_belief_to_dict(b) for b in beliefs]
+        if knowledge is not None:
+            data["knowledge"] = knowledge
+        if tom is not None:
+            data["tom"] = tom
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def load(self, agent_name: str) -> list:
         """反序列化 agent memories。不存在则返回空列表。"""
-        from .agent_base import Memory
+        return self.load_agent_state(agent_name)["memories"]
+
+    def load_agent_state(self, agent_name: str) -> dict:
+        """反序列化 agent 全量状态。不存在则返回空结构。
+
+        返回 {"memories": [Memory], "beliefs": [Belief], "knowledge": dict, "tom": dict}
+        """
+        from .agent_base import Memory, Belief
         path = self.storage_dir / f"{agent_name}.json"
         if not path.exists():
-            return []
+            return {"memories": [], "beliefs": [], "knowledge": {}, "tom": {}}
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-            return [
+            memories = [
                 Memory(
                     id=m["id"],
                     content=m["content"],
@@ -74,9 +119,18 @@ class MemoryStore:
                 )
                 for m in data.get("memories", [])
             ]
+            beliefs = [
+                _belief_from_dict(b) for b in data.get("beliefs", [])
+            ]
+            return {
+                "memories": memories,
+                "beliefs": beliefs,
+                "knowledge": data.get("knowledge", {}),
+                "tom": data.get("tom", {}),
+            }
         except Exception as e:
-            log.warning(f"  [MemoryStore] loading {agent_name} memories failed: {e}")
-            return []
+            log.warning(f"  [MemoryStore] loading {agent_name} state failed: {e}")
+            return {"memories": [], "beliefs": [], "knowledge": {}, "tom": {}}
 
     def clear(self, agent_name: str = None):
         """清理记忆存储。None = 全部清空。"""

@@ -73,6 +73,8 @@ class TickResult:
     new_hooks: list[Hook] = field(default_factory=list)
     suggested_chapter_split: list[ChapterScope] = field(default_factory=list)
     reversal_plan: dict = field(default_factory=dict)
+    # A 型反转（理论心智层）：本章新确认的事实事件 [{fact_id, proposition, confirmers, ...}]
+    type_a_events: list = field(default_factory=list)
 
 
 # ── Narrator ────────────────────────────────────────────────────────────
@@ -523,4 +525,5 @@ class Narrator:
                 for s in result.suggested_chapter_split
             ],
             "reversal_plan": result.reversal_plan,
+            "type_a_events": result.type_a_events,
         }

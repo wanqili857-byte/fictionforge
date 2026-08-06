@@ -113,7 +113,10 @@ class AgentState:
     location: str = ""
     # 关系网（角色名 → {type, trust, tension}）
     relationships: dict = field(default_factory=dict)
-    # 元信息：角色不知道的事（供合成器/Vault 使用）
+    # 理论心智层（theory_of_mind 维护，引擎/协调器读）
+    knowledge: dict = field(default_factory=dict)  # fact_id -> {"confidence", "source", "confirmed_at_chapter"}
+    tom: dict = field(default_factory=dict)        # target_name -> {fact_id: "knows"|"not_knows"|"uncertain"}
+    # 元信息：角色不知道的事（供合成器/Vault 使用，由 theory_of_mind 派生）
     unknown_to_character: list[str] = field(default_factory=list)
 
 
@@ -235,7 +238,8 @@ class Agent:
         mems = self.get_relevant_context(current_chapter, tags)
         return self.retriever.format_for_prompt(mems)
 
-    def apply_belief_updates(self, updates: list[dict]) -> list[dict]:
+    def apply_belief_updates(self, updates: list[dict], truth_table=None,
+                             chapter_num: int = 0) -> list[dict]:
         """AGM 式信念修正：新增信念；显式 revises 时把旧信念标为 revised。
 
         updates: [{subject, proposition, confidence, revises?, evidence?}]
@@ -245,6 +249,9 @@ class Agent:
         - 旧信念不删除，仅标记。返回实际应用的条目。
 
         由子类 decide() 里调用（agent_linmo 等），框架层统一修正逻辑。
+
+        truth_table: 传入 TruthTable 时，应用后的 active 信念会同步到
+        state.knowledge（理论心智层）；None 时行为与旧版完全一致。
         """
         if not updates:
             return []
@@ -268,6 +275,9 @@ class Agent:
                 source_memories=[m.id for m in self.state.memories[-3:]],
             ))
             applied.append(bu)
+        if truth_table is not None and applied:
+            from .theory_of_mind import sync_knowledge_from_beliefs
+            sync_knowledge_from_beliefs(self, truth_table, chapter_num)
         return applied
 
     def reflect(self, arc_config: Optional[dict] = None,

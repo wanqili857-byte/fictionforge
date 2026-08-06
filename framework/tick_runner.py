@@ -52,8 +52,16 @@ class TickRunner:
             self.novel_config = novel_config_mod.load(self.novel_dir)
             if self.novel_dir not in sys.path:
                 sys.path.insert(0, self.novel_dir)
+            # 理论心智层：真相表（作者 canon，内容包 bible/真相表.md）
+            self.truth_table = None
+            try:
+                from .theory_of_mind import TruthTable
+                self.truth_table = TruthTable.from_bible(self.novel_dir)
+            except Exception as e:
+                log.warning(f"  [ToM] 真相表加载失败: {e}")
         else:
             self.memory_store = None
+            self.truth_table = None
         default_out = (os.path.join(self.novel_dir, "temp")
                        if self.novel_dir else
                        os.path.join(os.path.dirname(__file__), "..", "temp"))
@@ -94,6 +102,9 @@ class TickRunner:
         # 2. 初始化 Agent
         agents = self._init_agents(arc_config, vault_state)
         agent_outputs = {}
+
+        # 2.5 恢复跨弧认知状态（beliefs/knowledge/tom，理论心智层）
+        self._restore_agent_epistemics(agents)
 
         # 3. 环境状态初始化
         env_state = EnvState.from_vault_reader(self.vault_reader, start_ch - 1)
@@ -137,19 +148,32 @@ class TickRunner:
         )
         tick_result.novel = self.novel
 
+        # 8.1 理论心智层：信念→知识同步、跨角色 ToM、A 型反转检测
+        type_a_events = self._run_theory_of_mind(agents, arc_config, agent_outputs)
+        if type_a_events:
+            tick_result.type_a_events = type_a_events
+            log.info(f"  [ToM] A 型确认事件: {len(type_a_events)} 条")
+
         # 8.25 弧末反思：Tier1 把弧内记忆压缩成高阶洞察（先于持久化）
         n_refl = self._run_reflections(agents, arc_config)
         if n_refl:
             log.info(f"  [Reflect] {n_refl} 条反思洞察已存入记忆")
 
-        # 8.5 持久化 agent memories
+        # 8.5 持久化 agent 全量状态（memories + 理论心智层认知）
         if self.memory_store:
             for name, agent in agents.items():
                 n_mems = len(agent.state.memories)
-                if n_mems:
-                    self.memory_store.save(name, agent.state.memories,
-                                            arc_config.get("arc_id", ""))
-                    log.info(f"  [MemoryStore] {name}: {n_mems} 条记忆已持久化")
+                if n_mems or agent.state.beliefs or agent.state.knowledge:
+                    self.memory_store.save(
+                        name, agent.state.memories,
+                        arc_config.get("arc_id", ""),
+                        beliefs=agent.state.beliefs,
+                        knowledge=agent.state.knowledge,
+                        tom=agent.state.tom,
+                    )
+                    log.info(f"  [MemoryStore] {name}: {n_mems} 记忆 / "
+                             f"{len(agent.state.beliefs)} 信念 / "
+                             f"{len(agent.state.knowledge)} 知识已持久化")
 
         # 9. VaultSync 准备回写
         log.info("  [VaultSync] 准备 vault 更新...")
@@ -195,6 +219,67 @@ class TickRunner:
         return outputs
 
     # ── 内部方法 ──────────────────────────────────────────────────────
+
+    def _restore_agent_epistemics(self, agents: dict):
+        """恢复各 agent 的跨弧认知状态（beliefs/knowledge/tom）。
+
+        引擎记忆（memories）在 agent 初始化时已加载；理论心智层认知
+        此前不落盘，这里从 MemoryStore 补恢复。
+        """
+        if not self.memory_store or not agents:
+            return
+        for key, agent in agents.items():
+            saved = self.memory_store.load_agent_state(key)
+            if not saved:
+                continue
+            state = getattr(agent, "state", None)
+            if state is None:
+                continue
+            n_b = n_k = n_t = 0
+            if saved.get("beliefs"):
+                state.beliefs = saved["beliefs"]
+                n_b = len(saved["beliefs"])
+            if saved.get("knowledge"):
+                state.knowledge = saved["knowledge"]
+                n_k = len(saved["knowledge"])
+            if saved.get("tom"):
+                state.tom = saved["tom"]
+                n_t = len(saved["tom"])
+            if n_b or n_k or n_t:
+                log.info(f"  [ToM] {key}: 恢复 {n_b} 信念 / {n_k} 知识 / {n_t} ToM")
+
+    def _run_theory_of_mind(self, agents: dict, arc_config: dict,
+                            agent_outputs: dict) -> list[dict]:
+        """理论心智层：信念→知识同步、跨角色 ToM 传播、A 型反转检测。
+
+        全确定性，无 LLM。返回本章 A 型确认事件列表。
+        """
+        if self.truth_table is None or not agents:
+            return []
+        from .theory_of_mind import (
+            sync_knowledge_from_beliefs, propagate_tom_all,
+            sync_unknowns, detect_type_a,
+        )
+        from .scene_director import find_shared_scenes
+
+        start_ch = min(arc_config.get("chapters", [1]))
+        # A 型增量基准：tick 起始的 knowledge 快照
+        prev_knowledge = {
+            key: set(getattr(getattr(a, "state", a), "knowledge", {}))
+            for key, a in agents.items()
+        }
+        # 1. active 信念 → knowledge
+        for key, a in agents.items():
+            sync_knowledge_from_beliefs(a, self.truth_table, start_ch)
+        # 2. 共享场景（同天同地）→ 跨角色 ToM
+        scenes = find_shared_scenes(agent_outputs)
+        if scenes:
+            propagate_tom_all(agents, scenes, self.truth_table)
+        # 3. unknown_to_character 派生
+        for key, a in agents.items():
+            sync_unknowns(a, self.truth_table)
+        # 4. A 型反转检测（tick 起始不知道、tick 末知道 → 确认事件）
+        return detect_type_a(agents, self.truth_table, start_ch, prev_knowledge)
 
     def _run_reflections(self, agents: dict, arc_config: dict) -> int:
         """弧末反思：仅 Tier1 角色（Tier2 无持久记忆，跳过）。"""
