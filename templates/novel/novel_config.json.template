@@ -33,6 +33,15 @@
     "世界观.md"
   ],
 
+  "pipeline": {
+    "default_mode": "gen"
+  },
+
+  "theory_of_mind": {
+    "enabled": true,
+    "truth_table": "真相表.md"
+  },
+
   "quality": {
     "anti_ai_words": ["某种", "显得", "仿佛", "略显", "几分"],
     "simile_max": 5,
