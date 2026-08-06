@@ -19,3 +19,7 @@ jobs:
         run: python tests/test_split_scenes.py
       - name: Unit tests — engine core
         run: python tests/test_engine_core.py
+      - name: Unit tests — theory of mind
+        run: python tests/test_theory_of_mind.py
+      - name: Unit tests — chapter coordinator
+        run: python tests/test_chapter_coordinator.py
