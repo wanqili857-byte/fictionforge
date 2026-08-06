@@ -25,6 +25,16 @@
 
 > 一句话:**别人给你一个"写作工具",FictionForge 给你一支"演员剧组"。**
 
+### 台后还有一套铁打的营盘
+
+上面是台前的戏。让**三十万字能写完**的,其实是台后这三件硬功夫:
+
+- 🗂️ **上下文统一** —— 每章都注入同一份权威上下文(人设/世界观/写作法则),设定前后不打架,不靠模型"记性"。
+- 👥 **角色统一** —— 每个角色一个 agent,人格、记忆、信念持久化落盘。上一章说的话,下一章还记得;配角不会换了章节就换个脑子。
+- 🧠 **不丢人格** —— agent 状态跨章持久化(memories / beliefs / knowledge),断了上下文接着写,角色还是那个人,不是临时捏出来的纸片。
+
+> 台前是演员剧组,台后是铁打的营盘。**剧组演得好是本事,营盘稳,才是长篇能写完的底气。**
+
 ---
 
 ## 真家伙展示 · 这是引擎生成的,不是人写的
@@ -116,6 +126,8 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 FictionForge is a **multi-agent novel-writing framework**. Character agents each carry memory, beliefs, and a personal view of the world; a narrator synthesizes their event lines into a chapter spec; a generation pipeline writes the prose behind quality gates (banned words, AI-flavor detection, metaphor density, sensory warmth) and auto-rewrites until it passes.
 
 Framework and novels are fully decoupled: `framework/` is generic, `novels/<yours>/` is a swappable content package, and `novel_config.json` is the only door between them. See `novels/静默轨道/` for a working sci-fi example.
+
+Under the hood it's built for the long haul: **unified context** (every chapter gets the same authoritative settings, no drift), **consistent characters** (each character is an agent with persisted memory/beliefs), and **persona persistence** (agent state survives across chapters — write 300k words and the protagonist is still the same person).
 
 **Quick start:** `pip install requests` → put an `OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` in `~/.env` → `python3 server/gen_proxy.py` → `python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` (`--force` because chapter 1 already ships with the repo — see the Chinese section above). Unit tests (no LLM, no I/O): `python3 tests/test_split_scenes.py` + `python3 tests/test_engine_core.py`.
 
