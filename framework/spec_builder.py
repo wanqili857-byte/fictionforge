@@ -406,3 +406,93 @@ class SpecBuilder:
                     sc["interactive"] = True
                     break
         return scenes
+
+
+# ── 机械 spec 构建（无 LLM）──────────────────────────────────────────────
+
+def build_spec_mechanical(tick_data: dict, chapter_num: int, novel: str) -> dict:
+    """从 tick 引擎输出自动构建章节 spec（确定性，无 LLM）。
+
+    与 LLM-driven SpecBuilder.build 不同：不设计叙事结构，只按天把事件
+    分组填进三节。作为 SpecBuilder 失败/不可用时的兜底。
+    返回 gen.py 兼容的 spec dict。
+    """
+    scopes = tick_data.get("suggested_chapter_split", [])
+    scope = None
+    for s in scopes:
+        if s.get("chapter_num") == chapter_num:
+            scope = s
+            break
+    if not scope and scopes:
+        scope = scopes[0]
+    n_sections = scope.get("sections", 3) if scope else 3
+
+    # Map chapters to day ranges
+    all_events = []
+    for pov, events in tick_data.get("character_trajectories", {}).items():
+        for ev in events:
+            all_events.append((ev.get("day", 0), ev.get("time", ""), pov, ev))
+    all_events.sort(key=lambda x: (x[0], x[1]))
+
+    total_days = sorted(set(e[0] for e in all_events))
+    n = len(scopes) if scopes else 1
+    days_per = max(1, len(total_days) // n) if total_days else 1
+
+    ch_indices = [s["chapter_num"] for s in scopes] if scopes else [chapter_num]
+    try:
+        idx = ch_indices.index(chapter_num)
+    except ValueError:
+        idx = 0
+    start_idx = idx * days_per
+    end_idx = (idx + 1) * days_per if idx < n - 1 else len(total_days)
+    ch_days = set(total_days[start_idx:end_idx])
+
+    ch_events = [e for e in all_events if e[0] in ch_days]
+
+    # Build sections from events
+    sec_ids = ["一", "二", "三", "四", "五", "六"]
+    sections = []
+    if ch_events:
+        events_per = max(1, len(ch_events) // n_sections)
+        for i in range(n_sections):
+            group = ch_events[i * events_per : (i + 1) * events_per]
+            if not group and sections:
+                group = ch_events[-events_per:] if ch_events else []
+
+            locs = list(set(e[3].get("location", "?") for e in group)) if group else ["?"]
+            loc_str = " / ".join(locs[:3])
+            briefs = "\n".join(
+                f"- {e[3].get('pov', '?')}: {e[3].get('brief', '')[:60]}"
+                for e in group[:5]
+            ) if group else "（无具体事件）"
+
+            is_reversal = scope.get("reversal_at_section", 0) == i + 1
+            sections.append({
+                "id": sec_ids[i],
+                "subject": loc_str,
+                "description": f"（引擎输出）{loc_str}。{briefs}",
+                "tension_direction": scope.get("tension_direction", "") if scope else "",
+                "weight": "expanded" if is_reversal else "normal",
+            })
+            if is_reversal:
+                sections[-1]["expanded_direction"] = scope.get("tension_direction",
+                     "反转场景，重点展开本章核心事件")
+    else:
+        for i in range(n_sections):
+            sections.append({
+                "id": sec_ids[i],
+                "subject": f"场景{i+1}",
+                "description": f"（引擎无具体事件，请手动补充本章内容）",
+                "tension_direction": scope.get("tension_direction", "") if scope else "",
+                "weight": "normal",
+            })
+
+    return {
+        "novel": novel,
+        "chapter": chapter_num,
+        "title": f"第{chapter_num}章",
+        "sections": sections,
+        "target_chars": max(2000, n_sections * 800),
+        "from_engine": True,
+        "tick_arc_id": tick_data.get("arc_id", ""),
+    }

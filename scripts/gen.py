@@ -1171,88 +1171,11 @@ def load_tick_result(path: str) -> dict:
 def build_spec_from_tick(tick_data: dict, chapter_num: int, novel: str) -> dict:
     """Auto-build chapter spec from tick engine output.
 
-    Groups tick events by chapter, builds section descriptions.
-    Returns spec dict compatible with gen.py generation pipeline.
+    机械构建已迁至 framework.spec_builder.build_spec_mechanical，
+    此处留 wrapper 兼容（避免 framework→scripts 反依赖）。
     """
-    scopes = tick_data.get("suggested_chapter_split", [])
-    scope = None
-    for s in scopes:
-        if s.get("chapter_num") == chapter_num:
-            scope = s
-            break
-    if not scope and scopes:
-        scope = scopes[0]
-    n_sections = scope.get("sections", 3) if scope else 3
-
-    # Map chapters to day ranges
-    all_events = []
-    for pov, events in tick_data.get("character_trajectories", {}).items():
-        for ev in events:
-            all_events.append((ev.get("day", 0), ev.get("time", ""), pov, ev))
-    all_events.sort(key=lambda x: (x[0], x[1]))
-
-    total_days = sorted(set(e[0] for e in all_events))
-    n = len(scopes) if scopes else 1
-    days_per = max(1, len(total_days) // n) if total_days else 1
-
-    ch_indices = [s["chapter_num"] for s in scopes] if scopes else [chapter_num]
-    try:
-        idx = ch_indices.index(chapter_num)
-    except ValueError:
-        idx = 0
-    start_idx = idx * days_per
-    end_idx = (idx + 1) * days_per if idx < n - 1 else len(total_days)
-    ch_days = set(total_days[start_idx:end_idx])
-
-    ch_events = [e for e in all_events if e[0] in ch_days]
-
-    # Build sections from events
-    sec_ids = ["一", "二", "三", "四", "五", "六"]
-    sections = []
-    if ch_events:
-        events_per = max(1, len(ch_events) // n_sections)
-        for i in range(n_sections):
-            group = ch_events[i * events_per : (i + 1) * events_per]
-            if not group and sections:
-                group = ch_events[-events_per:] if ch_events else []
-
-            locs = list(set(e[3].get("location", "?") for e in group)) if group else ["?"]
-            loc_str = " / ".join(locs[:3])
-            briefs = "\n".join(
-                f"- {e[3].get('pov', '?')}: {e[3].get('brief', '')[:60]}"
-                for e in group[:5]
-            ) if group else "（无具体事件）"
-
-            is_reversal = scope.get("reversal_at_section", 0) == i + 1
-            sections.append({
-                "id": sec_ids[i],
-                "subject": loc_str,
-                "description": f"（引擎输出）{loc_str}。{briefs}",
-                "tension_direction": scope.get("tension_direction", "") if scope else "",
-                "weight": "expanded" if is_reversal else "normal",
-            })
-            if is_reversal:
-                sections[-1]["expanded_direction"] = scope.get("tension_direction",
-                     "反转场景，重点展开本章核心事件")
-    else:
-        for i in range(n_sections):
-            sections.append({
-                "id": sec_ids[i],
-                "subject": f"场景{i+1}",
-                "description": f"（引擎无具体事件，请手动补充本章内容）",
-                "tension_direction": scope.get("tension_direction", "") if scope else "",
-                "weight": "normal",
-            })
-
-    return {
-        "novel": novel,
-        "chapter": chapter_num,
-        "title": f"第{chapter_num}章",
-        "sections": sections,
-        "target_chars": max(2000, n_sections * 800),
-        "from_engine": True,
-        "tick_arc_id": tick_data.get("arc_id", ""),
-    }
+    from framework.spec_builder import build_spec_mechanical
+    return build_spec_mechanical(tick_data, chapter_num, novel)
 
 
 # ── Pipeline ─────────────────────────────────────────────────────────────
@@ -1461,6 +1384,70 @@ class Pipeline:
 
 
 # ── Main ──────────────────────────────────────────────────────────────
+def run_generation(spec: dict, novel_dir=None, force: bool = False,
+                   spec_path=None, output_path=None, vault_reader_obj=None) -> str:
+    """从已加载的 spec 跑完整生成管线（main 与顶层协调器共用）。
+
+    spec: gen.py 兼容 spec dict（novel/title/chapter/sections）。
+    novel_dir: 内容包目录；缺省按 spec 推导（novels/<novel> 或 spec.novel_dir）。
+    spec_path: spec 文件路径（spec 内相对 output 解析用，可 None）。
+    force: 跳过 validate_spec（协调器自动 spec 用）。
+    vault_reader_obj: 已构造的 vault reader；None 时按 novel_dir/vault 惰性构造。
+    返回最终正文文本。
+    """
+    novel = spec["novel"]
+    title = spec["title"]
+
+    if vault_reader_obj is None:
+        vault_dir = Path(novel_dir) / "vault"
+        if vault_dir.is_dir():
+            sys.path.append(str(novel_dir))
+            try:
+                from lib.vault_reader import VaultReader
+                vault_reader_obj = VaultReader(str(vault_dir))
+            except ImportError:
+                vault_reader_obj = None
+
+    # ── Output path ──
+    if output_path is None:
+        output_path = spec.get("output")
+        if output_path:
+            output_path = (spec_path.parent / output_path).resolve() if spec_path else Path(output_path)
+        else:
+            output_path = BASE / "novels" / novel / "chapters" / f"{title}.md"
+
+    # ── Rules / state / config ──
+    rules = load_adapt_rules()
+    character_state = load_character_state(novel_dir)
+    novel_config = load_novel_config(str(novel_dir))
+
+    # ── System prompt（含理论心智层 info_gaps 注入）──
+    system_prompt = build_system_prompt(novel, novel_dir, character_state,
+                                        novel_config)
+    if spec.get("info_gaps"):
+        from framework.theory_of_mind import render_info_gaps
+        gaps_text = render_info_gaps(spec["info_gaps"])
+        if gaps_text.strip():
+            system_prompt = system_prompt + "\n\n" + gaps_text
+            log.info(f"[ToM] info_gaps 注入 system prompt（{len(gaps_text)} chars）")
+
+    # ── Chapter context ──
+    chapter_context = ""
+    if vault_reader_obj:
+        try:
+            chapter_context = vault_reader_obj.build_context_for_model(
+                spec.get("chapter", 1))
+            if chapter_context:
+                log.info(f"[vault] vault context: {len(chapter_context)} chars")
+        except Exception as e:
+            log.warning(f"  [vault] context build error: {e}")
+
+    pipeline = Pipeline(spec, novel_dir, vault_reader_obj, rules,
+                        system_prompt, output_path, chapter_context, character_state,
+                        novel_config)
+    return pipeline.run()
+
+
 def main():
     if len(sys.argv) < 2 or "--help" in sys.argv or "-h" in sys.argv:
         print("Usage:", file=sys.stderr)
@@ -1591,41 +1578,9 @@ def main():
             log.error("\n[!] Fix errors above, or use --force to skip validation")
             sys.exit(1)
 
-    # ── Output path ──
-    output_path = spec.get("output")
-    if output_path:
-        output_path = (spec_path.parent / output_path).resolve()
-    else:
-        output_path = BASE / "novels" / novel / "chapters" / f"{title}.md"
-
-    # ── Load rules ──
-    rules = load_adapt_rules()
-
-    # ── Character state ──
-    character_state = load_character_state(novel_dir)
-
-    # ── Novel config（框架与小说的接口）──
-    novel_config = load_novel_config(str(novel_dir))
-
-    # ── System prompt ──
-    system_prompt = build_system_prompt(novel, novel_dir, character_state,
-                                        novel_config)
-
-    # ── Chapter context ──
-    chapter_context = ""
-    if vault_reader_obj:
-        try:
-            chapter_context = vault_reader_obj.build_context_for_model(chapter_num)
-            if chapter_context:
-                log.info(f"[vault] vault context: {len(chapter_context)} chars")
-        except Exception as e:
-            log.warning(f"  [vault] context build error: {e}")
-
-    # ── Run pipeline ──
-    pipeline = Pipeline(spec, novel_dir, vault_reader_obj, rules,
-                        system_prompt, output_path, chapter_context, character_state,
-                        novel_config)
-    pipeline.run()
+    # ── 生成管线（与顶层协调器共用 run_generation）──
+    run_generation(spec, novel_dir=novel_dir, force=force, spec_path=spec_path,
+                   vault_reader_obj=vault_reader_obj)
 
 
 if __name__ == "__main__":
