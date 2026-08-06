@@ -34,4 +34,5 @@
 
 ## 版本历史
 
+- **v0.1.1**（2026-08-06）— 第二版·框架可用性优化：外挂内容包、divergence_vibe 接线、CI 双套件、README 修正
 - **v0.1.0**（2026-08-02）— FictionForge 第一版：双管线（gen.py + engine）、引擎 Agent 强化、框架/内容解耦、公开 sanitize
