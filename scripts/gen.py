@@ -280,6 +280,13 @@ def build_system_prompt(novel_title, novel_dir, character_state=None,
     if human_ref:
         human_ref = f"## 角色生活质感参考\n\n以下段落展示了目标的生活质感和人味密度。模型正文应达到类似的角色互动密度、职业细节嵌入、和内心活动。\n\n{human_ref}"
 
+    # ── 判例库（v0.3.0 修订回灌蒸馏，bible/判例/） ──
+    # 只存好例（作者修订后的句子）——v5 教训：prompt 里任何句子都是例子，
+    # 坏例（AI 原句）进 prompt 会让模型照样抄，AI 原句对只留在 _revisions 供人审。
+    # 预算配额在蒸馏时已裁剪（新进旧出），此处只读不扩容——防 system prompt 膨胀。
+    case_mat = load_bible_file(novel_dir, "判例/素材库.md")
+    case_section = case_mat
+
     # ── Character anchors (read from bible/人设.md → 模型注入锚点) ──
     inject = characters.get("模型注入锚点", "").strip()
     if inject:
@@ -298,13 +305,15 @@ def build_system_prompt(novel_title, novel_dir, character_state=None,
         pronoun_rule = (f"主角{protagonist}的人称代词固定为「{pronoun}」，"
                         "正文中涉及主角时一律用「" + pronoun + "」，不得混用或更换。")
 
+    genre = (novel_config or {}).get("genre", "悬疑")
     parts = [
-        f"你是悬疑小说《{novel_title}》的写作者。",
+        f"你是{genre}小说《{novel_title}》的写作者。",
         rules,
         physics,
         world_rules,
         char_section,
         human_ref,
+        case_section,
         pronoun_rule,
         forbidden,
     ]
@@ -324,6 +333,50 @@ def build_system_prompt(novel_title, novel_dir, character_state=None,
 
 
 # ── User prompt assembly ──────────────────────────────────────────────
+def load_act_world(novel_dir: Path, act: str) -> str:
+    """幕级子世界观（视角过滤器）：从 outline/大剧本.md（或 pack 根 大剧本.md）
+    取 「## 幕 {act}」 段的 `### 子世界观` 小节，蒸馏成简短注入块。
+
+    只含该幕角色可知的世界细节——DESIGN 知识边界原则的剧情级粒度。
+    无 act / 无大剧本 → 返回空串（调用方照旧跑全局世界观）。
+    """
+    for cand in (Path(novel_dir) / "outline" / "大剧本.md",
+                 Path(novel_dir) / "大剧本.md"):
+        if cand.exists():
+            text = cand.read_text(encoding="utf-8")
+            break
+    else:
+        return ""
+
+    # 定位「## 幕 {act}」，到下一个「## 幕」或文件尾
+    markers = [m for m in re.finditer(r"^##\s*(?:第?\s*[A-D一二三四]幕|幕\s*[A-D一二三四])", text, re.M)]
+    target = re.compile(rf"^##\s*(?:第?\s*{act}幕|幕\s*{act})", re.M)
+    start = None
+    for m in markers:
+        if target.match(m.group(0)):
+            start = m.end()
+            break
+    if start is None:
+        return ""
+    end = None
+    for m in markers:
+        if m.start() > start:
+            end = m.start()
+            break
+    body = text[start:end if end else None].strip()
+
+    # 只取 子世界观 小节（若存在），否则整段蒸馏
+    sw = re.search(r"^###\s*子世界观\s*\n(.*?)(?=^###|\Z)", body, re.M | re.S)
+    content = sw.group(1).strip() if sw else body
+
+    lines = [ln.strip().lstrip("-*") for ln in content.split("\n") if ln.strip()]
+    lines = [ln for ln in lines if not ln.startswith("#") and len(ln) >= 6]
+    budget = 8  # 预算配额：幕级补充至多 8 条，超了取前 8（防膨胀）
+    if len(lines) > budget:
+        lines = lines[:budget]
+    return "### 本幕补充世界观（当前幕角色所知道的事实）\n" + "\n".join(f"- {ln}" for ln in lines)
+
+
 def build_normal_prompt(spec, sections, context_before=None, novel_config=None,
                         section_len_hint=None):
     """Build user prompt for a single normal-weight section（逐节顺序生成）。
@@ -337,10 +390,12 @@ def build_normal_prompt(spec, sections, context_before=None, novel_config=None,
         lines.append(f"情绪线：{spec['mood']}")
         lines.append("")
 
-    # 世界观由 system prompt 从 bible/世界观.md 注入；这里不硬编码任何小说设定
-    if novel_config and novel_config.get("quality", {}).get("world_summary"):
-        lines.append(f"世界观：{novel_config['quality']['world_summary']}")
+    act_world = spec.get("_act_world")
+    if act_world:
+        lines.append(act_world)
         lines.append("")
+
+    # 世界观已由 system prompt 注入（load_worldbuilding），这里不重复
 
     if context_before:
         lines.append("### 上文实稿（紧接这段继续写，保持连贯，不要重复或重新介绍已写内容）")
@@ -370,6 +425,15 @@ def build_expanded_prompt(spec, section, context_before=None, section_len_hint=N
     lines = [f"## {spec['title']}·单独段落写作", ""]
     lines.append("这一段是章节的核心段落，需要详细展开。")
     lines.append("")
+
+    if spec.get("mood"):
+        lines.append(f"情绪线：{spec['mood']}")
+        lines.append("")
+
+    act_world = spec.get("_act_world")
+    if act_world:
+        lines.append(act_world)
+        lines.append("")
 
     if context_before:
         lines.append("### 上文实稿（紧接这段继续写，保持连贯，不要重复或重新介绍已写内容）")
@@ -515,22 +579,25 @@ def validate_spec(spec, novel_dir):
                 f"(~{int(avg)}/section, may be tight)"
             )
 
-    # 6. Cross-chapter continuity
-    state_path = Path(novel_dir) / "chapters" / "章节状态.md"
-    if state_path.exists():
-        text = state_path.read_text(encoding="utf-8")
-        existing = set()
-        for line in text.split("\n"):
-            m = re.match(r"^## 第(\d+)章", line)
-            if m:
-                existing.add(int(m.group(1)))
-        if existing:
-            latest = max(existing)
+    # 6. Cross-chapter continuity: 以 canon（chapters/ 顶层正文，排除 drafts/_revisions）判序。
+    #    允许「重生成草稿」（chapter <= latest），禁止跳章（chapter > latest+1）。
+    #    （原实现在草稿阶段即推进 章节状态.md；v0.3.0 后状态只由 promote 在 canon 上更新）
+    chapters_dir = Path(novel_dir) / "chapters"
+    if chapters_dir.is_dir():
+        canon_nums = []
+        for f in chapters_dir.iterdir():
+            if (f.is_file() and f.name.startswith("第") and "章" in f.name
+                    and f.suffix == ".md"):
+                m = re.match(r"第(\d+)章", f.name)
+                if m:
+                    canon_nums.append(int(m.group(1)))
+        if canon_nums:
+            latest = max(canon_nums)
             expected = latest + 1
-            if chapter_num != expected:
+            if chapter_num > expected:
                 issues.append(
-                    f"ERROR: spec chapter={chapter_num}, but 章节状态.md latest "
-                    f"is ch{latest} (expected ch{expected})"
+                    f"ERROR: spec chapter={chapter_num}, but canon latest is ch{latest} "
+                    f"(expected ch{expected})"
                 )
 
     # 7. Anomaly density for buffer period (conservative keyword matching)
@@ -795,6 +862,19 @@ def quality_check(text, spec, chapter_num, forbidden_words=None):
                 "fixable": False,
             })
 
+    # 4. 段落长度（移动端观感：两三句一行，超长段落在手机上是"一大坨"）
+    # 对话段（以引号开头，可能是一长段台词）跳过——那是内容不是排版问题。
+    OVERLONG_PARA = 100  # 单段超 ~100 字拆
+    overlong = [len(p) for p in text.split("\n") if len(p.strip()) > OVERLONG_PARA
+                and not p.lstrip().startswith(("「", "“", '"'))]
+    if overlong:
+        issues.append({
+            "severity": "warn",
+            "category": "paragraph",
+            "message": f"段落过长: {len(overlong)} 段超 {OVERLONG_PARA} 字，最长 {max(overlong)} 字（移动端观感）",
+            "fixable": True,
+        })
+
     return issues
 
 
@@ -844,14 +924,24 @@ def auto_fix_quality(text, issues, system_prompt, route, reference_text=None):
             fix_instructions.append(
                 "- 在不改变风格的前提下，适当扩展场景细节和感官描写"
             )
+        elif key == "paragraph":
+            fix_instructions.append(
+                "- 把超过 3 句的单个长段落按句号（。！？）拆成 2-3 句一行的短段落，场景转换用空行隔开"
+            )
 
     if not fix_instructions:
         return text, True
 
+    # paragraph 修复就是改断行，不能和"不要改变段落结构"冲突
+    para_fix = any(i.get("category") == "paragraph" for i in issues if i.get("fixable"))
+    structure_rule = (
+        "只调整段落断行，不要改变叙事顺序、句子内容和对话归属。"
+        if para_fix else "不要改变叙事顺序和段落结构。"
+    )
     fix_parts = [
         "请修改以下章节正文，要求：",
         *fix_instructions,
-        "不要增加新的比喻句。不要改变叙事顺序和段落结构。",
+        "不要增加新的比喻句。" + structure_rule,
         "不要加注释说明。直接输出修改后的正文。",
     ]
     if reference_text:
@@ -1283,18 +1373,9 @@ class Pipeline:
             else:
                 log.info(f"  length OK (target ~{target_chars})")
 
-        # 章节状态提取
-        log.info("\n[pipeline] Phase 3b: state extraction & consistency check")
-        try:
-            state_warnings = update_chapter_state(self.novel_dir, self.chapter_num,
-                                                   final_text, self.spec,
-                                                   self.novel_config)
-            for w in state_warnings:
-                log.warning(f"  [consistency] {w}")
-            if not state_warnings:
-                log.info("  no consistency issues")
-        except Exception as e:
-            log.warning(f"  [state] error: {e}")
+        # 章节状态提取改由 promote 阶段在 canon 上执行（v0.3.0）。
+        # 草稿不推进 章节状态.md——状态只反映人工定稿，杜绝草稿-定稿偏差。
+        log.info("\n[pipeline] Phase 3b: (草稿) 状态提取由 promote 完成")
 
         return final_text
 
@@ -1380,6 +1461,10 @@ class Pipeline:
         log.info(f"\n[pipeline] Output: {self.output_path}")
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self.output_path.write_text(text + "\n", encoding="utf-8")
+        # v0.3.0 AI 原稿快照：promote 用它 diff 人工修订，识别改动来源。
+        snap_path = self.output_path.with_name(self.output_path.stem + ".ai.md")
+        snap_path.write_text(text + "\n", encoding="utf-8")
+        log.info(f"[draft] AI 原稿快照: {snap_path}")
         log.info("[pipeline] Done.")
 
 
@@ -1416,10 +1501,26 @@ def run_generation(spec: dict, novel_dir=None, force: bool = False,
         else:
             output_path = BASE / "novels" / novel / "chapters" / f"{title}.md"
 
+    # v0.3.0 canon/drafts 分家：章节输出一律落 chapters/drafts/（AI 草稿）。
+    # canon 只由 scripts/promote.py 人工晋升，生成管线永不覆盖 canon。
+    if "chapters" in output_path.parts:
+        output_path = output_path.parent / "drafts" / output_path.name
+        log.info(f"[draft] 草稿输出: {output_path}")
+
     # ── Rules / state / config ──
     rules = load_adapt_rules()
     character_state = load_character_state(novel_dir)
     novel_config = load_novel_config(str(novel_dir))
+
+    # ── 幕级子世界观（DESIGN 剧本层：知识边界的剧情级粒度）──
+    # spec 带 act 字段（如 "A"）时，从 outline/大剧本.md 取该幕子世界观注入。
+    if spec.get("act"):
+        act_world = load_act_world(Path(novel_dir), spec["act"])
+        if act_world:
+            spec["_act_world"] = act_world
+            log.info(f"[act] 幕 {spec['act']} 子世界观注入（{len(act_world)} chars）")
+        else:
+            log.warning(f"[act] spec.act={spec['act']}，但大剧本无该幕/子世界观——只跑全局世界观")
 
     # ── System prompt（含理论心智层 info_gaps 注入）──
     system_prompt = build_system_prompt(novel, novel_dir, character_state,
