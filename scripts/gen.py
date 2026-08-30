@@ -12,12 +12,15 @@ Example:
     python scripts/gen.py novels/静默轨道/specs/ch1.json
 """
 
+import hashlib
 import json
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 # ── Ensure project root is on sys.path for lib/ and server/ imports ────
 _ROOT = Path(__file__).resolve().parent.parent
@@ -638,6 +641,10 @@ def print_validation_issues(issues):
     has_error = False
     log.info(f"\n[Spec validation] {len(issues)} issue(s):")
     for issue in issues:
+        # vault 连续性 check 会塞 ("WARN", msg) tuple，兼容
+        if isinstance(issue, tuple):
+            severity, msg = issue[0], issue[1]
+            issue = f"{severity}: {msg}"
         if issue.startswith("ERROR"):
             has_error = True
         log.info(f"  {issue}")
@@ -1274,7 +1281,9 @@ class Pipeline:
     """生成管线：spec → 生成 → merge → anti-AI → 输出。"""
 
     def __init__(self, spec, novel_dir, vault_reader, rules, system_prompt, output_path,
-                 chapter_context="", character_state=None, novel_config=None):
+                 chapter_context="", character_state=None, novel_config=None,
+                 resection_id: Optional[str] = None,
+                 resection_previous: Optional[dict] = None):
         self.spec = spec
         self.novel_dir = novel_dir
         self.vault_reader = vault_reader
@@ -1286,6 +1295,10 @@ class Pipeline:
         self.character_state = character_state or default_character_state()
         self.novel_config = novel_config or {}
         self.sections = spec["sections"]
+        # M4 局部重生成：resection_id = 要重写的节 id；其余节用 resection_previous 复用
+        self.resection_id = resection_id
+        self.resection_previous = resection_previous or {}
+        self.section_texts: list[str] = []
 
     def run(self) -> str:
         """执行完整管线：逐节顺序生成 → 拼接 → anti-AI → 输出。返回最终文本。"""
@@ -1317,10 +1330,23 @@ class Pipeline:
         prev_text = self.chapter_context  # 第1节上文 = vault 概要；之后 = 上一节真实文本
         n = len(self.sections)
         for sec in self.sections:
+            # M4 局部重生成：非目标节直接从既有文本复用，不重调 LLM
+            if self.resection_id and sec["id"] != self.resection_id:
+                kept = self.resection_previous.get(sec["id"], "")
+                if not kept:
+                    log.error(f"[ERROR] 局部重生成缺节 {sec['id']} 的既有文本")
+                    sys.exit(1)
+                texts.append(kept)
+                prev_text = kept if len(kept) <= _SECTION_CONTEXT_WINDOW else kept[-_SECTION_CONTEXT_WINDOW:]
+                log.info(f"\n[pipeline] section {sec['id']} ({sec['subject']}) — 复用既有文本"
+                         + (f"（len={len(kept)}）"))
+                continue
+
             is_expanded = sec.get("weight") == "expanded"
             route = MODEL_ROUTES["expanded"] if is_expanded else MODEL_ROUTES["normal"]
             log.info(f"\n[pipeline] section {sec['id']} ({sec['subject']}) "
-                     f"weight={'expanded' if is_expanded else 'normal'}")
+                     f"weight={'expanded' if is_expanded else 'normal'}"
+                     + ("  [RESECTION]" if self.resection_id else ""))
             log.info(f"  model: {route['model']}")
             log.info("-" * 40)
 
@@ -1351,6 +1377,7 @@ class Pipeline:
             prev_text = (text if len(text) <= _SECTION_CONTEXT_WINDOW
                          else text[-_SECTION_CONTEXT_WINDOW:])
 
+        self.section_texts = texts
         return texts
 
     def _phase_merge_check(self, section_texts: list[str]) -> str:
@@ -1465,12 +1492,34 @@ class Pipeline:
         snap_path = self.output_path.with_name(self.output_path.stem + ".ai.md")
         snap_path.write_text(text + "\n", encoding="utf-8")
         log.info(f"[draft] AI 原稿快照: {snap_path}")
+
+        # M4 节清单：局部重生成/promote 定位节边界用
+        if self.section_texts:
+            manifest = {
+                "chapter": self.chapter_num,
+                "title": self.spec.get("title", ""),
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                # 写盘时的最终草稿哈希：M4 守卫靠它判断「草稿是否被人改过」。
+                # 不能比节文本重组——auto-fix 改的是合并后文本，节文本是 fix 前的。
+                "draft_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "sections": [
+                    {"id": sec["id"], "subject": sec.get("subject", ""),
+                     "text": t}
+                    for sec, t in zip(self.sections, self.section_texts)
+                ],
+            }
+            man_path = self.output_path.with_name(self.output_path.stem + ".sections.json")
+            man_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2),
+                                encoding="utf-8")
+            log.info(f"[draft] 节清单: {man_path}")
         log.info("[pipeline] Done.")
 
 
 # ── Main ──────────────────────────────────────────────────────────────
 def run_generation(spec: dict, novel_dir=None, force: bool = False,
-                   spec_path=None, output_path=None, vault_reader_obj=None) -> str:
+                   spec_path=None, output_path=None, vault_reader_obj=None,
+                   resection_id: Optional[str] = None,
+                   resection_previous: Optional[dict] = None) -> str:
     """从已加载的 spec 跑完整生成管线（main 与顶层协调器共用）。
 
     spec: gen.py 兼容 spec dict（novel/title/chapter/sections）。
@@ -1543,9 +1592,47 @@ def run_generation(spec: dict, novel_dir=None, force: bool = False,
         except Exception as e:
             log.warning(f"  [vault] context build error: {e}")
 
+    # ── M4 局部重生成守卫 ──
+    # 从已有的 drafts/X.md.sections.json 取其他节既有文本；目标节重写。
+    if resection_id:
+        man_path = output_path.with_name(output_path.stem + ".sections.json")
+        if not man_path.exists():
+            log.error(f"[ERROR] --resection 需要节清单 {man_path}（先正常 gen 一遍）")
+            sys.exit(1)
+        manifest = json.loads(man_path.read_text(encoding="utf-8"))
+        ms = {m["id"]: m["text"] for m in manifest.get("sections", [])}
+        if not ms:
+            log.error(f"[ERROR] 节清单为空 {man_path}")
+            sys.exit(1)
+        ids = [m["id"] for m in manifest.get("sections", [])]
+        spec_ids = [s.get("id") for s in spec["sections"]]
+        if ids != spec_ids:
+            log.warning(f"[M4] 节清单 ids {ids} ≠ spec ids {spec_ids}——spec 改了节结构？")
+        if resection_id not in ms:
+            log.error(f"[ERROR] 节清单里没有 {resection_id}（可选: {list(ms)}）")
+            sys.exit(1)
+        # 守卫：草稿哈希与写盘时不一致 = 被人改过 → 复用其他节会丢修改 → 要求 --force
+        draft_text = ""
+        if output_path.exists():
+            draft_text = output_path.read_text(encoding="utf-8").rstrip("\n")
+        rec_hash = manifest.get("draft_hash", "")
+        cur_hash = hashlib.sha256(draft_text.encode("utf-8")).hexdigest() if draft_text else ""
+        if not rec_hash:
+            log.warning("[M4] 节清单缺 draft_hash（旧格式）——跳过草稿守卫，改为警告")
+        elif cur_hash and cur_hash != rec_hash and not force:
+            log.error(
+                f"[ERROR] 现有草稿已被人工改过（与写盘时不一致）。"
+                f"局部重生成会丢弃其他节的人工修改。\n"
+                f"  若确认覆盖，请加 --force 重跑；或整章重生成。")
+            sys.exit(1)
+        resection_previous = ms
+        log.info(f"[M4] 局部重生成节 {resection_id}，"
+                 f"其余 {len(ms) - 1} 节复用既有文本")
+
     pipeline = Pipeline(spec, novel_dir, vault_reader_obj, rules,
                         system_prompt, output_path, chapter_context, character_state,
-                        novel_config)
+                        novel_config, resection_id=resection_id,
+                        resection_previous=resection_previous)
     return pipeline.run()
 
 
@@ -1565,6 +1652,7 @@ def main():
     engine_chapter = None
     engine_novel = None
     spec_arg = None
+    resection_id = None
 
     argv = sys.argv[1:]
     i = 0
@@ -1574,6 +1662,10 @@ def main():
             validate_only = True
         elif arg == "--force":
             force = True
+        elif arg == "--resection":
+            if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
+                i += 1
+                resection_id = argv[i]
         elif arg == "--use-engine":
             use_engine = True
             if i + 1 < len(argv) and not argv[i + 1].startswith("--"):
@@ -1681,7 +1773,7 @@ def main():
 
     # ── 生成管线（与顶层协调器共用 run_generation）──
     run_generation(spec, novel_dir=novel_dir, force=force, spec_path=spec_path,
-                   vault_reader_obj=vault_reader_obj)
+                   vault_reader_obj=vault_reader_obj, resection_id=resection_id)
 
 
 if __name__ == "__main__":
