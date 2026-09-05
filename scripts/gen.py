@@ -336,6 +336,42 @@ def build_system_prompt(novel_title, novel_dir, character_state=None,
 
 
 # ── User prompt assembly ──────────────────────────────────────────────
+def load_drift_notes(novel_dir: Path, chapter_num: int) -> str:
+    """spec-canon 漂移注记（v0.3.0）：作者定稿相对 spec 的情节级差异。
+
+    读 chapters/_revisions/漂移注记.md，取本章之前的章节小节（新的在前），
+    预算裁剪 ≤12 行。注入 user prompt——模型以作者定稿为准，不再继承
+    spec/AI 稿里已被推翻的情节细节。canon 唯一真源原则的接线点。
+    """
+    note_path = Path(novel_dir) / "chapters" / "_revisions" / "漂移注记.md"
+    if not note_path.exists():
+        return ""
+    text = note_path.read_text(encoding="utf-8")
+    # 切「## 第N章 …」小节
+    sections = []
+    for m in re.finditer(r"^## 第(\d+)章 (.+?)$\n(.*?)(?=^## 第|\Z)", text, re.M | re.S):
+        ch, title, body = int(m.group(1)), m.group(2).strip(), m.group(3).strip()
+        if ch < chapter_num:
+            sections.append((ch, title, body))
+    if not sections:
+        return ""
+    sections.sort(key=lambda x: -x[0])  # 新章在前
+    lines = []
+    for ch, title, body in sections:
+        if body.startswith("（本章无情节级修订"):
+            continue
+        lines.append(f"【第{ch}章 {title}】")
+        for ln in body.split("\n"):
+            ln = ln.strip()
+            if ln.startswith("- ") or ln.startswith("（另有"):
+                lines.append(ln)
+    lines = lines[:12]  # 预算配额：漂移注记 ≤12 行
+    if not lines:
+        return ""
+    return ("### 上章修订要点（作者定稿为准；与 spec/旧稿冲突时以此为准）\n"
+            + "\n".join(lines))
+
+
 def load_act_world(novel_dir: Path, act: str) -> str:
     """幕级子世界观（视角过滤器）：从 outline/大剧本.md（或 pack 根 大剧本.md）
     取 「## 幕 {act}」 段的 `### 子世界观` 小节，蒸馏成简短注入块。
@@ -398,6 +434,11 @@ def build_normal_prompt(spec, sections, context_before=None, novel_config=None,
         lines.append(act_world)
         lines.append("")
 
+    drift = spec.get("_drift_note")
+    if drift:
+        lines.append(drift)
+        lines.append("")
+
     # 世界观已由 system prompt 注入（load_worldbuilding），这里不重复
 
     if context_before:
@@ -436,6 +477,11 @@ def build_expanded_prompt(spec, section, context_before=None, section_len_hint=N
     act_world = spec.get("_act_world")
     if act_world:
         lines.append(act_world)
+        lines.append("")
+
+    drift = spec.get("_drift_note")
+    if drift:
+        lines.append(drift)
         lines.append("")
 
     if context_before:
@@ -1570,6 +1616,12 @@ def run_generation(spec: dict, novel_dir=None, force: bool = False,
             log.info(f"[act] 幕 {spec['act']} 子世界观注入（{len(act_world)} chars）")
         else:
             log.warning(f"[act] spec.act={spec['act']}，但大剧本无该幕/子世界观——只跑全局世界观")
+
+    # ── spec-canon 漂移注记（v0.3.0）──
+    drift = load_drift_notes(Path(novel_dir), spec.get("chapter", 1))
+    if drift:
+        spec["_drift_note"] = drift
+        log.info(f"[drift] 漂移注记注入（{len(drift)} chars）——作者定稿情节差异为准")
 
     # ── System prompt（含理论心智层 info_gaps 注入）──
     system_prompt = build_system_prompt(novel, novel_dir, character_state,

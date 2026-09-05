@@ -30,14 +30,14 @@
 
 ### v0.3.0 修订感知管线（2026-08-28 转向，见 docs/VERSION_PLAN.md）
 
-- [ ] **canon 层** — 章节状态机 `ai_draft → human_revised → canon`；gen.py 输出改 `chapters/drafts/`，canon 只由人工晋升；context_before 只从 canon 拼接
-- [ ] **修订回灌** — diff(AI 草稿, 定稿) 落盘 + AI 事后标注原因标签（AI味/节奏/素材/逻辑）；蒸馏产物 = 素材库（只存人改好句，AI 原句对留修订记录人审，v5 教训）
-- [ ] **prompt 预算配额** — 回灌产物设上限（每类 N 条、新挤旧、定期人工归并），防 system prompt 膨胀
-- [ ] **状态重提取** — 修订后重跑章节状态/角色状态提取，消除草稿-定稿偏差
+- [x] **canon 层** — 章节状态机 `ai_draft → human_revised → canon`；gen.py 输出 `chapters/drafts/`（+`.ai.md` 快照），生成永不覆盖 canon；章节顺序锁改读 canon 目录
+- [x] **修订回灌** — promote.py：diff → AI 事后标注（AI味/节奏/素材/逻辑/结构/润色/弃用，fence 剥离+重试+正则兜底）→ canon 晋升 + `_revisions/*.rev.json`；distill.py 蒸馏素材库（只存人改好句，v5 教训）
+- [x] **prompt 预算配额** — distill `--max`（默认 40 条，新进旧出）+ 幕级子世界观 ≤8 条 + 漂移注记 ≤12 行；system prompt 总量实测监控
+- [x] **状态重提取** — promote 在 canon 上重跑 update_chapter_state；草稿阶段不再推进 章节状态.md
 - [x] **局部重生成** — `gen.py --resection <节id>`：目标节重写、其余节复用；节清单 `drafts/X.md.sections.json`；草稿被人工改过时守卫拦截（需 `--force` 显式覆盖）
 - [x] **canon 前门禁** — promote 晋升前对定稿重跑 anti-AI / verve（只报告不自动改）；统计指标按决策不追外部检测器，仅内部参考
-- [ ] **spec-canon 漂移注记** — canon 晋升时记差异，下一章 spec 可见
-- [ ] **试点跑通** — 私有试点包 ch1 全循环：AI 草稿 → 人修 → promote → distill → ch2 带回灌产物生成（作者本地验证；公开 repo 只留示例 `novels/静默轨道`）
+- [x] **spec-canon 漂移注记** — promote 从「逻辑/结构」标签提情节级差异 → `_revisions/漂移注记.md`（幂等）；gen.py 生成时注入「上章修订要点（作者定稿为准）」≤12 行
+- [x] **试点跑通** — 私有试点包 ch1 机制链已验证（AI 草稿 4839 → 人修 3979 → promote 3 hunks → canon/状态/修订记录落盘）；M4 真自测（未重写节字节级保持）；漂移注记闭环抽测过。**遗留**：ch1 修订标注因 proxy 中断全落「润色」——OpenRouter 充值后重跑 promote 拿真标签 → distill 出真素材库 → ch2 重生成即带作者口味
 
 ### v0.4.0+ 引擎落地（降级顺延）
 

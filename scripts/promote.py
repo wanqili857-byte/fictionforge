@@ -266,6 +266,63 @@ def _write_revision(novel_dir, draft, snapshot, canon, ch_num, annotated):
     print(f"   修订记录: {rev}")
 
 
+def _write_drift_note(novel_dir, ch_num: int, title: str, annotated: list[dict]):
+    """spec-canon 漂移注记（v0.3.0）：情节级差异摘要 → 下一章 spec 撰写/生成可见。
+
+    只收「逻辑/结构」标签（改情节因果/场景结构的），句级润色不入注记——
+    这是给下一章生成看的「作者定稿与 spec 的差异」，不是文风教材（文风走素材库）。
+    确定性提取，零新增 LLM 调用。同章重复晋升 = 替换该章小节（幂等）。
+    """
+    rev_dir = novel_dir / "chapters" / "_revisions"
+    rev_dir.mkdir(parents=True, exist_ok=True)
+    note_path = rev_dir / "漂移注记.md"
+
+    title = re.sub(r"^第\d+章\s*", "", title)  # 草稿名自带章号，避免「第1章 第1章 …」
+
+    items = []
+    for h in annotated:
+        if h.get("label") not in ("逻辑", "结构"):
+            continue
+        old = h.get("old", "").strip()
+        new = h.get("new", "").strip()
+        if h.get("kind") == "delete" or (old and not new):
+            items.append(f"- [{h['label']}] 删：{old[:80]}")
+        elif not old and new:
+            items.append(f"- [{h['label']}] 增：{new[:80]}")
+        else:
+            items.append(f"- [{h['label']}] {old[:60]} → {new[:80]}")
+
+    from collections import Counter
+    c = Counter(h["label"] for h in annotated)
+    tail = "、".join(f"{k} {v} 处" for k, v in c.most_common() if k not in ("逻辑", "结构") and v)
+    if not items:
+        body = "（本章无情节级修订，细节见 .rev.json）"
+    else:
+        body = "\n".join(items)
+        if tail:
+            body += f"\n\n（另有 {tail}，属文风/细节层，见 {title}.rev.json）"
+
+    section = f"## 第{ch_num}章 {title}\n\n{body}\n"
+
+    # 幂等：替换同章小节，否则追加
+    if note_path.exists():
+        text = note_path.read_text(encoding="utf-8")
+        pat = re.compile(rf"^## 第{ch_num}章 .*?(?=^## 第|\Z)", re.M | re.S)
+        if pat.search(text):
+            text = pat.sub(section, text)
+        else:
+            text = text.rstrip("\n") + "\n\n" + section
+        note_path.write_text(text, encoding="utf-8")
+    else:
+        header = (
+            "# spec-canon 漂移注记\n\n"
+            "> promote 自动维护：作者定稿相对 AI 草稿/spec 的**情节级**差异。\n"
+            "> 下一章 spec 撰写与生成注入（gen.py 自动读），作者定稿为准。\n\n"
+        )
+        note_path.write_text(header + section, encoding="utf-8")
+    print(f"   漂移注记: {note_path}（情节级 {len(items)} 条）")
+
+
 def main():
     ap = argparse.ArgumentParser(description="AI 草稿 → 人工修订 → canon 晋升")
     ap.add_argument("novel_dir", help="内容包目录（如 novels/静默轨道，或作者本地私有包路径）")
@@ -321,6 +378,9 @@ def main():
 
     # 修订记录
     _write_revision(novel_dir, draft, snapshot, canon, ch_num, annotated)
+
+    # spec-canon 漂移注记（v0.3.0）：情节级差异 → 下一章 spec 撰写/生成可见
+    _write_drift_note(novel_dir, ch_num, draft.stem, annotated)
 
     # 报告
     c = Counter(h["label"] for h in annotated)
