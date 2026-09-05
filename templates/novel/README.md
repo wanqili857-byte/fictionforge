@@ -55,7 +55,7 @@
 ```
 
 - `novel_dir` **相对路径以 spec 所在目录为锚**：`".."` = 内容包根目录（bible / vault / chapters 都在那里）
-- 绝对路径也行：`"/Users/you/novels/灰色频段"`
+- 绝对路径也行：`"/Users/you/novels/你的小说目录"`
 - 没写 `novel_dir` 时照旧落回 `novels/<novel>/`
 - spec 的 `output` 本来就是相对 spec 目录，正文自动写回内容包自己的 `chapters/`
 - 跑法：`python scripts/gen.py ~/novels/你的小说/specs/ch1.json`
