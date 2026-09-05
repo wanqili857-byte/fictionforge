@@ -51,5 +51,6 @@
 
 ## 版本历史
 
+- **v0.3.0**（2026-08-30）— 修订感知管线：canon/drafts 分家、promote/distill 修订回灌、M4 局部重生成、spec-canon 漂移注记、DESIGN 五铁律
 - **v0.1.1**（2026-08-06）— 第二版·框架可用性优化：外挂内容包、divergence_vibe 接线、CI 双套件、README 修正
 - **v0.1.0**（2026-08-02）— FictionForge 第一版：双管线（gen.py + engine）、引擎 Agent 强化、框架/内容解耦、公开 sanitize
