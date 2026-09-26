@@ -121,20 +121,47 @@ def test_pov_first_person():
 def test_pronoun_switch():
     rules = MechanicalRules(protagonist="江晚", protagonist_pronoun="她",
                             cast_genders={"江晚": "f", "张三": "m"})
-    # 同句有男性角色名 → 他 有归属，不报
-    ok1 = "江晚看着张三，他把水递给她。"
-    check("他有归属不报", mechanical_judge(ok1, rules, "r1", 1) == [])
-    # 同句无男性角色名 → 他 悬空，报
-    bad = "江晚把剑收了，他说走吧。"
-    vs = mechanical_judge(bad, rules, "r1", 1)
-    check("他悬空报 1 条", len(vs) == 1 and vs[0].severity == Severity.HIGH)
-    # 正确人称不报
-    check("她不报", mechanical_judge("江晚把剑收了，她说走吧。", rules, "r1", 1) == [])
-    # 对话内豁免
-    check("对话内豁免", mechanical_judge("「江晚，他说走吧。」", rules, "r1", 1) == [])
-    # 无 cast_genders → 检查跳过
-    rules2 = MechanicalRules(protagonist="江晚", protagonist_pronoun="她")
-    check("无 cast 跳过", mechanical_judge(bad, rules2, "r1", 1) == [])
+    # 紧邻判据：主角名后紧跟反性别人称 → 无歧义，报
+    vs = mechanical_judge("江晚他收了剑。", rules, "r1", 1)
+    adj = [v for v in vs if "adj" in v.probe_id]
+    check("紧邻反性别人称报 1 条", len(adj) == 1 and adj[0].severity == Severity.HIGH)
+    # 章节级缺位判据：主角名多现、正确人称 0、反性别人称反复 → 真 bug 形状
+    buggy = "\n".join(["江晚推开门。", "江晚看着屋里的人。", "江晚没说话。",
+                       "他把灯挑亮。", "他递过来一碗水。", "他退到门边。"])
+    vs2 = mechanical_judge(buggy, rules, "r1", 1)
+    hit = [v for v in vs2 if v.probe_id.startswith("cons-pronoun-ch")]
+    check("章节级人称缺位报 1 条", len(hit) == 1 and hit[0].confidence < 1.0)
+
+    # ↓ 真实跑批抓到的误报类：他指代场上另一男性角色，名字未出现 → 不报
+    for text in ["江晚转身看他。", "江晚顺着他的目光看过去。",
+                 "江晚没理他，掏出本子翻开。", "江晚等着他往下说。"]:
+        vs3 = mechanical_judge(text, rules, "r1", 1)
+        check(f"他指代他人不误报: {text[:8]}",
+              not [v for v in vs3 if "pronoun" in v.probe_id])
+    # 正确人称充分 → 不报
+    good = "\n".join(["江晚推开门。", "她把灯挑亮。", "她没说话。", "她退到门边。"])
+    check("正确人称充分不报",
+          not [v for v in mechanical_judge(good, rules, "r1", 1) if "pronoun" in v.probe_id])
+    # 行首对话豁免
+    check("行首对话豁免", mechanical_judge("「江晚，他说走吧。」", rules, "r1", 1) == [])
+    # 无 protagonist/人称 → 跳过
+    check("无主角人称配置跳过",
+          mechanical_judge("江晚他收了剑。", MechanicalRules(protagonist="江晚"), "r1", 1) == [])
+
+
+def test_quoted_span_not_narration():
+    """引文（任意位置）不算旁白——真实跑批抓到的误报类。"""
+    rules = MechanicalRules(pov="third_limited")
+    for text in ['他说：“这箱子是我的，你少管。”',
+                 '江晚不松手：“那带我去你家看看。”',
+                 '“苏小姐是在审我？”',
+                 '江晚说：「我想问问盐的事。」']:
+        vs = mechanical_judge(text, rules, "r1", 1)
+        check(f"引文内第一人称豁免: {text[:10]}",
+              not [v for v in vs if v.probe_id.startswith("cons-pov")])
+    # 旁白第一人称仍要报
+    vs2 = mechanical_judge("我蹲进凹陷。", rules, "r1", 1)
+    check("旁白第一人称仍报", len([v for v in vs2 if v.probe_id.startswith("cons-pov")]) == 1)
 
 
 # ── 边界与确定性 ──────────────────────────────────────────────────────
@@ -163,6 +190,7 @@ if __name__ == "__main__":
     test_target_length()
     test_pov_first_person()
     test_pronoun_switch()
+    test_quoted_span_not_narration()
     test_edges_and_determinism()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

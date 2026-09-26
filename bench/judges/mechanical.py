@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from bench.contracts import Violation, ViolationType, DetectorKind, Severity
+from bench.judges.text_utils import narration
 
 _DIALOG_RE = re.compile(r"^\s*[「\"“]")   # 直角引号 / 直引号 / 弯引号 “
 _SENT_SPLIT = re.compile(r"(?<=[。！？])")
@@ -50,7 +51,7 @@ def mechanical_judge(text: str, rules: MechanicalRules, run_id: str,
         return []
     out = []
 
-    def V(pid, sev, evidence, note=""):
+    def V(pid, sev, evidence, note="", confidence=1.0):
         return Violation(
             probe_id=f"{pid}-ch{chapter}",
             type=ViolationType.CONSTRAINT,
@@ -59,6 +60,7 @@ def mechanical_judge(text: str, rules: MechanicalRules, run_id: str,
             severity=sev,
             evidence=evidence,
             run_id=run_id,
+            confidence=confidence,
             note=note,
         )
 
@@ -95,32 +97,44 @@ def mechanical_judge(text: str, rules: MechanicalRules, run_id: str,
                          {"actual": n, "target": rules.target_chars,
                           "span": f"{int(lower)}-{int(upper)}"}))
 
-    # 4. POV 第一人称（旁白）+ 5. 人称混用（旁白逐句）
-    opp = _opposite(rules.protagonist_pronoun)
-    same_gender_names = []
-    if opp and rules.cast_genders:
-        want = "m" if opp == "他" else "f"
-        same_gender_names = [n for n, g in rules.cast_genders.items()
-                             if g == want and n != rules.protagonist]
+    # 4. POV 第一人称（旁白）+ 5. 人称混用
+    # 真实数据教训（首轮跑批抽查）：
+    #  - 引文要**任意位置**剥离，不能只认行首（`他说：“这是我的。”` 同行混排）
+    #  - 逐句「主角名+反性别人称+句内无同性别角色名」判据误报率极高
+    #    （`苏茜转身看他` 里的他是场上另一个男性角色，名字未必出现）
+    #    改为：紧邻判据（无歧义）+ 章节级缺位判据（真 bug 形状：主角人称从不用）
+    narr_lines = []
     for line in lines:
         stripped = line.strip()
         if not stripped or _DIALOG_RE.match(stripped):
             continue
-
+        narr = narration(stripped)
+        if not narr.strip():
+            continue
+        narr_lines.append(narr)
         if rules.pov == "third_limited":
-            for m in _FIRST_PERSON_RE.finditer(stripped):
+            for m in _FIRST_PERSON_RE.finditer(narr):
                 out.append(V("cons-pov", Severity.HIGH,
                              {"word": m.group(0),
-                              "span": stripped[max(0, m.start() - 8): m.end() + 8]}))
+                              "span": narr[max(0, m.start() - 8): m.end() + 8]}))
 
-        if opp and same_gender_names:
-            for sent in _SENT_SPLIT.split(stripped):
-                sent = sent.strip()
-                if (rules.protagonist and rules.protagonist in sent
-                        and opp in sent
-                        and not any(n in sent for n in same_gender_names)):
-                    out.append(V("cons-pronoun", Severity.HIGH,
-                                 {"word": opp,
-                                  "span": sent[:40]}))
+    opp = _opposite(rules.protagonist_pronoun)
+    if opp and rules.protagonist:
+        joined = "\n".join(narr_lines)
+        for m in re.finditer(re.escape(rules.protagonist) + r"\s*" + re.escape(opp), joined):
+            out.append(V("cons-pronoun-adj", Severity.HIGH,
+                         {"word": opp, "span": joined[max(0, m.start() - 6): m.end() + 8],
+                          "note": "主角名后紧跟反性别人称"}))
+        name_count = joined.count(rules.protagonist)
+        correct = joined.count(rules.protagonist_pronoun) if rules.protagonist_pronoun else 0
+        opposite_count = joined.count(opp)
+        if name_count >= 3 and correct == 0 and opposite_count >= 3:
+            out.append(V("cons-pronoun", Severity.HIGH,
+                         {"protagonist": rules.protagonist,
+                          "name_count": name_count, "correct_pronoun_count": correct,
+                          "opposite_pronoun_count": opposite_count,
+                          "span": joined[:60]},
+                         confidence=0.7,
+                         note="主角名多次出现但主角人称从未使用、反性别人称反复出现"))
 
     return out
