@@ -73,6 +73,7 @@ class ChapterState:
     characters: list = field(default_factory=list)
     deaths: list = field(default_factory=list)
     possessions: dict = field(default_factory=dict)
+    transfers: list = field(default_factory=list)   # 声明式转移注记（豁免双持有）
     notes: str = ""
 
 
@@ -220,6 +221,7 @@ def build_ledger(novel: str, specs: list, cast_names: list,
             characters=chars,
             deaths=list(delta.get("deaths", [])),
             possessions=dict(delta.get("items", {})),
+            transfers=list(delta.get("transfer", [])),
             notes=delta.get("notes", ""),
         ))
     return StateLedger(novel=novel, chapters=chapters)
