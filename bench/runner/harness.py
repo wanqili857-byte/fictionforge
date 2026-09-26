@@ -22,6 +22,13 @@ SYSTEM_BARE = "你是小说写作者。"
 SYSTEM_MID = ("你是小说写作者。保持与既有设定、前文内容一致；"
               "角色的言行必须是其此刻已经知道的信息所能支撑的。")
 
+# 输出格式要求：三档**完全一致**（否则档位对比不公平）。首次真实跑批发现模型会
+# 输出 markdown 标题（"## 第1章"/"### 一、…"），污染字数统计与段落判据。
+OUTPUT_RULES = ("\n## 输出要求\n"
+                "只写正文。不要章节标题、不要小节标题、不要任何标记符号"
+                "（#、*、---）。短段落，1-2 句换行。"
+                "承接上文，写到本章结束为止，不要写本章之后的内容。")
+
 _PARA_SPLIT = re.compile(r"(?<=[。！？])")
 
 
@@ -72,7 +79,7 @@ def build_prompt(tier: str, u, spec: dict, prior_text: Optional[str] = None,
         raise ValueError(f"未知 harness 档位: {tier}（可选 {TIERS}）")
 
     if tier == "bare":
-        return SYSTEM_BARE, chapter_spec_text(spec)
+        return SYSTEM_BARE, chapter_spec_text(spec) + OUTPUT_RULES
 
     parts = []
     chapter = spec.get("chapter", 1)
@@ -95,6 +102,7 @@ def build_prompt(tier: str, u, spec: dict, prior_text: Optional[str] = None,
         parts.append("")
 
     parts.append(chapter_spec_text(spec))
+    parts.append(OUTPUT_RULES)
     return SYSTEM_MID, "\n".join(parts)
 
 

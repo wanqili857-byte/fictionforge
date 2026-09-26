@@ -150,6 +150,20 @@ def test_full_equals_mid_prompt():
     check("TIERS 三档", TIERS == ("bare", "mid", "full"))
 
 
+def test_output_rules_identical_across_tiers():
+    """输出格式要求在三档必须一致——否则档位对比不公平（首次真实跑批踩到：
+    模型输出 markdown 标题污染字数统计）。"""
+    u = _u()
+    sp = _spec(u, 2)
+    _, bare_user = build_prompt("bare", u, sp)
+    _, mid_user = build_prompt("mid", u, sp, prior_text="X")
+    check("bare 含输出要求", "只写正文" in bare_user and "不要章节标题" in bare_user)
+    check("mid 含输出要求", "只写正文" in mid_user)
+    from bench.runner.harness import OUTPUT_RULES
+    check("三档输出要求字面一致",
+          bare_user.endswith(OUTPUT_RULES) and mid_user.endswith(OUTPUT_RULES))
+
+
 def test_determinism():
     u = _u()
     sp = _spec(u, 2)
@@ -186,6 +200,7 @@ if __name__ == "__main__":
     test_knowledge_boundary_discipline()
     test_prior_tail_truncation()
     test_full_equals_mid_prompt()
+    test_output_rules_identical_across_tiers()
     test_determinism()
     test_apply_gate_fix()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
