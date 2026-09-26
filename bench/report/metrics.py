@@ -30,6 +30,17 @@ FAMILIES = {
 }
 
 
+def is_incomplete(run: dict) -> bool:
+    """未完成 = 0 字，或明确记录 chapters_done == 0。
+
+    0 章 0 违反若照常显示，会被读成"零违反"（完美）——必须显式标记并剔除。
+    缺 chapters_done 字段时按未知处理，不误判。
+    """
+    if run.get("chars", 0) == 0:
+        return True
+    return (run.get("summary") or {}).get("chapters_done") == 0
+
+
 def family_of(probe_id: str) -> str:
     """把 probe_id 归到族；未知归 other。"""
     for fam, prefixes in FAMILIES.items():
@@ -125,6 +136,29 @@ def attribution(rate_by_tier: dict) -> dict:
 
 # ── I/O：装载跑批结果 ─────────────────────────────────────────────────
 
+def gate_contribution(runs: dict) -> dict:
+    """门禁的真实贡献 = **配对测量**：同一 full 运行内 修前核心 − 修后核心。
+
+    为什么不用 mid↔full 差值：那是两次独立生成，差值混着采样噪声
+    （k=1 时实测 glm-flash 的 mid↔full 差值 7.08，而配对测量只有 1）。
+    配对测量在同一批文本上只多一道门禁 → 干净归因。
+    """
+    pre_core = post_core = 0
+    n_runs = 0
+    for r in runs.values():
+        if r["tier"] != "full" or not r["violations"].get("post_fix"):
+            continue
+        if not r["chars"]:
+            continue
+        n_runs += 1
+        pre = summarize_run(r["violations"].get("pre_fix", []), r["chars"])
+        post = summarize_run(r["violations"].get("post_fix", []), r["chars"])
+        pre_core += pre["core_abs"]
+        post_core += post["core_abs"]
+    return {"full_runs": n_runs, "core_pre": pre_core, "core_post": post_core,
+            "removed": pre_core - post_core}
+
+
 def load_runs(out_dir) -> dict:
     """读回 {run_id: {summary, violations, chars, tier, model, k}}。"""
     out = Path(out_dir)
@@ -154,8 +188,12 @@ def load_runs(out_dir) -> dict:
 
 # ── 报表 ──────────────────────────────────────────────────────────────
 
-def build_table(runs: dict) -> list:
-    """每次运行一行：模型 × 档位 × k → 违反（总计/剔篇幅/分族）、成本、pass 标记。"""
+def build_table(runs: dict, expected_chapters: int = None) -> list:
+    """每次运行一行：模型 × 档位 × k → 违反（总计/剔篇幅/分族）、成本、完成度。
+
+    expected_chapters 给出时应标出「部分完成」（跑了 N/M 章）——
+    部分运行的数字不能当完整行读（kimi 撞额度只跑 2/6 章就是这情况）。
+    """
     rows = []
     for run_id, r in sorted(runs.items()):
         tier = r["tier"]
@@ -164,12 +202,20 @@ def build_table(runs: dict) -> list:
         used = post if (tier == "full" and post is not None) else pre
         s = summarize_run(used, r["chars"])
         fam = s["by_family"]
+        # 未完成（0 章 / 0 字）不能显示为 0 违反——那会被读成"完美"
+        done = (r["summary"] or {}).get("chapters_done")
+        incomplete = is_incomplete(r)
+        partial = (not incomplete and expected_chapters
+                   and done is not None and done < expected_chapters)
         rows.append({
+            "incomplete": incomplete, "partial": bool(partial),
+            "chapters_done": done, "expected_chapters": expected_chapters,
             "run_id": run_id, "model": r["model"], "tier": tier, "k": r["k"],
             "chars": r["chars"], "cost": round(r["cost"], 5),
             "violations_abs": s["violations_abs"],
             "violations_per_10k": s["violations_per_10k"],
-            "core_abs": s["core_abs"], "core_per_10k": s["core_per_10k"],
+            "core_abs": (None if incomplete else s["core_abs"]),
+            "core_per_10k": (None if incomplete else s["core_per_10k"]),
             "by_family": fam,
             "length_abs": fam.get("length", 0),
             "style_abs": fam.get("style", 0),
@@ -184,7 +230,15 @@ def build_table(runs: dict) -> list:
 def aggregate_by_model(runs: dict) -> list:
     """模型汇总：每档平均**核心**违反率（剔篇幅）+ 三档归因 + 平均成本。"""
     by_model = {}
-    for r in runs.values():
+    # 未完成 / 部分完成都不参与汇总（部分运行的密度不可比）
+    done_map = {k: (v.get("summary") or {}).get("chapters_done")
+                for k, v in runs.items()}
+    full_done = max([d for d in done_map.values() if d], default=None)
+    for k, r in runs.items():
+        if is_incomplete(r):
+            continue
+        if full_done and done_map[k] is not None and done_map[k] < full_done:
+            continue
         by_model.setdefault(r["model"], {}).setdefault(r["tier"], []).append(r)
     out = []
     for model, tiers in sorted(by_model.items()):
@@ -200,11 +254,16 @@ def aggregate_by_model(runs: dict) -> list:
             per_tier[tier] = round(sum(cores) / len(cores), 2) if cores else 0.0
             total_rates[tier] = round(sum(totals) / len(totals), 2) if totals else 0.0
             costs += [r["cost"] for r in rs]
+        gate = gate_contribution({k: v for k, v in runs.items()
+                                 if v["model"] == model})
+        att = attribution(per_tier)
+        att.pop("gate_postprocessing", None)   # 用配对测量替代，见 gate_paired
         out.append({
             "model": model,
             "core_rate_by_tier": per_tier,
             "total_rate_by_tier": total_rates,
-            "attribution": attribution(per_tier),
+            "attribution": att,
+            "gate_paired": gate,
             "avg_cost_per_run": round(sum(costs) / max(1, len(costs)), 5),
         })
     return out
@@ -224,20 +283,48 @@ def render_markdown(rows: list, agg: list) -> str:
     for r in rows:
         fixed = (f"{r['pre_fix_abs']}→{r['post_fix_abs']}"
                  if r["post_fix_abs"] is not None else "—")
+        if r["incomplete"]:
+            lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
+                         f"**未完成** | — | — | — | — | — | — | — | — | {r['cost']} |")
+            continue
+        if r.get("partial"):
+            lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
+                         f"{r['chars']} | {r['violations_abs']} | {r['core_abs']} | "
+                         f"{r['core_per_10k']} | {r['length_abs']} | {r['style_abs']} | "
+                         f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {r['cost']} | "
+                         f"⚠ 部分 {r['chapters_done']}/{r['expected_chapters']} 章 |")
+            continue
         lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
                      f"{r['chars']} | {r['violations_abs']} | {r['core_abs']} | "
                      f"{r['core_per_10k']} | {r['length_abs']} | {r['style_abs']} | "
                      f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {r['cost']} |")
+    for r in rows:
+        if r.get("partial"):
+            lines.append("")
+            lines.append(f"> ⚠ `{r['run_id']}` 仅完成 {r['chapters_done']}/"
+                         f"{r['expected_chapters']} 章，**不参与汇总**"
+                         f"（数字不可与完整运行比较）。")
+            break
     lines += ["", "## 按模型汇总（三档归因，核心违反率）", "",
-              "| 模型 | bare | mid | full | 上下文工程 | 门禁 | 合计 | 平均成本$ |",
-              "|---|---|---|---|---|---|---|---|"]
+              "| 模型 | bare | mid | full | 上下文工程(bare→mid) | 合计(bare→full) | 平均成本$ |",
+              "|---|---|---|---|---|---|---|"]
     for a in agg:
         t = a["core_rate_by_tier"]
         d = a["attribution"]
         lines.append(f"| {a['model']} | {t.get('bare','—')} | {t.get('mid','—')} | "
                      f"{t.get('full','—')} | {d.get('context_engineering','—')} | "
-                     f"{d.get('gate_postprocessing','—')} | {d.get('total','—')} | "
-                     f"{a['avg_cost_per_run']} |")
+                     f"{d.get('total','—')} | {a['avg_cost_per_run']} |")
+    lines += ["", "## 门禁贡献（配对测量：同一次 full 运行内 修前核心 → 修后核心）", "",
+              "| 模型 | full 运行数 | 修前核心 | 修后核心 | 擦除 |",
+              "|---|---|---|---|---|"]
+    for a in agg:
+        g = a["gate_paired"]
+        if g["full_runs"]:
+            lines.append(f"| {a['model']} | {g['full_runs']} | {g['core_pre']} | "
+                         f"{g['core_post']} | {g['removed']} |")
+    lines += ["", "> 门禁只用配对测量：mid↔full 差值是两次独立生成，含采样噪声",
+              "> （实测 glm-flash 的 mid↔full 差值 7.08，配对测量只有 1）。",
+              "> 门禁只能做减法（删禁词/切长段），补不了篇幅。"]
     return "\n".join(lines) + "\n"
 
 
@@ -250,7 +337,16 @@ def main():
     runs = load_runs(args.out_dir)
     if not runs:
         print("没有可读的运行目录"); return 1
-    rows = build_table(runs)
+    # 期望章数从 results.json 的 universe 读（标「部分完成」用）
+    expected = None
+    rj = Path(args.out_dir) / "results.json"
+    if rj.exists():
+        try:
+            expected = (json.loads(rj.read_text(encoding="utf-8"))
+                        .get("universe", {}).get("chapters"))
+        except Exception:
+            expected = None
+    rows = build_table(runs, expected_chapters=expected)
     agg = aggregate_by_model(runs)
     md = render_markdown(rows, agg)
     print(md)

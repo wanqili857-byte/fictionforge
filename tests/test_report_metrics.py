@@ -135,6 +135,42 @@ def test_aggregate_by_model():
     check("单档位模型也可汇总", agg["m2"]["core_rate_by_tier"] == {"bare": 10.0})
 
 
+def test_incomplete_and_paired_gate():
+    """未完成 run 不能显示为 0 违反；门禁贡献用配对测量。"""
+    def mk(probe):
+        return vio("constraint", probe=probe)
+
+    def run(model, tier, pre, post, chars, done=6):
+        return {"model": model, "tier": tier, "k": 0, "chars": chars, "cost": 0.01,
+                "summary": {"model": model, "tier": tier, "k": 0, "chapters_done": done},
+                "violations": {"pre_fix": [mk(p) for p in pre],
+                               "post_fix": [mk(p) for p in post]}}
+    runs = {
+        # full：修前核心 3（style 2 + state 1）+ 篇幅 1 → 修后只剩篇幅
+        "m1__full__k0": run("m1", "full",
+                            ["cons-forbidden-ch1", "cons-para-ch2",
+                             "state-dead-ch3", "cons-length-ch4"],
+                            ["cons-length-ch4"], 1000),
+        "m1__bare__k0": run("m1", "bare", ["cons-forbidden-ch1"] * 4, [], 1000),
+        # 未完成：0 章 0 字
+        "m2__bare__k0": run("m2", "bare", [], [], 0, done=0),
+    }
+    rows = {r["run_id"]: r for r in M.build_table(runs)}
+    check("未完成 run 标 incomplete", rows["m2__bare__k0"]["incomplete"] is True)
+    check("未完成 run 核心数为 None（不显示 0）",
+          rows["m2__bare__k0"]["core_abs"] is None)
+    check("未完成 run 在 Markdown 中标明",
+          "**未完成**" in M.render_markdown(M.build_table(runs),
+                                           M.aggregate_by_model(runs)))
+    agg = {a["model"]: a for a in M.aggregate_by_model(runs)}
+    check("未完成模型不进汇总", "m2" not in agg)
+    g = agg["m1"]["gate_paired"]
+    check("配对门禁：修前核心 3 → 修后 0，擦除 3",
+          g["core_pre"] == 3 and g["core_post"] == 0 and g["removed"] == 3)
+    check("汇总不再给 mid↔full 门禁差值",
+          "gate_postprocessing" not in agg["m1"]["attribution"])
+
+
 def test_render_markdown():
     runs = _runs_fixture()
     md = M.render_markdown(M.build_table(runs), M.aggregate_by_model(runs))
@@ -178,6 +214,7 @@ if __name__ == "__main__":
     test_attribution()
     test_build_table_and_full_uses_post()
     test_aggregate_by_model()
+    test_incomplete_and_paired_gate()
     test_render_markdown()
     test_load_runs()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
