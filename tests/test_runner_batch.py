@@ -67,6 +67,22 @@ def test_parse_response():
           llm.parse_response({"choices": [{"message": {"content": "x"}}]})["tokens_out"] == 0)
 
 
+def test_empty_content_is_error():
+    """空正文必须算 error：思考型模型把 max_tokens 烧光时正文为空，
+    若照常入库，判定器对空文本判 0 违反——白拿第一（筛选实测 glm-5.3-flash）。"""
+    empty = llm.parse_response({"choices": [{"finish_reason": "length",
+                                             "message": {"content": ""}}],
+                                "usage": {"prompt_tokens": 10, "completion_tokens": 8192}})
+    check("空 content 报错", empty["error"] is not None and empty["text"] == "")
+    check("错误点名 finish_reason", empty["error"] and "length" in empty["error"])
+    ws = llm.parse_response({"choices": [{"finish_reason": "stop",
+                                          "message": {"content": "  \n "}}]})
+    check("纯空白同样报错", ws["error"] is not None)
+    ok = llm.parse_response({"choices": [{"finish_reason": "stop",
+                                          "message": {"content": "正文"}}]})
+    check("正常正文不报错", ok["error"] is None and ok["text"] == "正文")
+
+
 def test_load_keys():
     d = Path(tempfile.mkdtemp()) / ".env"
     d.write_text("OPENROUTER_API_KEY=sk-or-test\nDEEPSEEK_API_KEY=sk-ds-test\n"
@@ -292,6 +308,20 @@ def test_error_breaks_but_records():
     check("已生成章节保留", (out / "ds-flash__mid__k0" / "ch1.md").exists())
 
 
+def test_empty_generation_is_recorded_not_written():
+    """空正文 = 错误，不落盘、不进判定——否则空文本 0 违反会污染榜单。"""
+    u = generate(seed=7, chapters=3)
+    out = Path(tempfile.mkdtemp())
+    gen = FakeGen(text="   ")
+    res = run_batch(u, ["ds-flash"], tiers=("bare",), k=1, out_dir=out,
+                    generate_fn=gen, judge_fn=fake_judge, log=lambda *_: None)
+    run = res["runs"][0]
+    check("空正文记为错误", run["errors"] and "正文为空" in run["errors"][0]["error"])
+    check("空正文不落盘", not (out / "ds-flash__mid__k0" / "ch1.md").exists()
+          and not (out / "ds-flash__bare__k0" / "ch1.md").exists())
+    check("空正文书目数为 0", run["chapters_done"] == 0)
+
+
 def test_rules_from_universe():
     u = generate(seed=7, chapters=3)
     r = rules_for_universe(u, 1)
@@ -329,6 +359,7 @@ def test_rejudge_without_regeneration():
 if __name__ == "__main__":
     test_request_body()
     test_parse_response()
+    test_empty_content_is_error()
     test_load_keys()
     test_proxy_policy()
     test_ark_provider_wiring()
@@ -341,6 +372,7 @@ if __name__ == "__main__":
     test_full_tier_pre_post_and_fix()
     test_prior_text_chaining_and_boundary()
     test_error_breaks_but_records()
+    test_empty_generation_is_recorded_not_written()
     test_rules_from_universe()
     test_rejudge_without_regeneration()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")

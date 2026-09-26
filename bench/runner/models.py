@@ -60,10 +60,10 @@ CHANNELS = {
                 "注意：本账号无 Kimi 通道——kimi-k2.x 在方舟上返回 UnsupportedModel",
     },
     "dashscope": {
-        "available": True,
+        "available": False,   # 2026-09-26 晚实测：账号 Arrearage（欠费墙），全模型拒答
         "note": "阿里云百炼（聚合渠道）：qwen 免费额度 + 三方模型按厂商各发免费额度。"
                 "实测可用 kimi-k3（k2.6 免费额度已耗尽）；MiniMax/deepseek-v4 三方额度"
-                "也已耗尽；stepfun 未开通。额度烧完即停，模型免费额度独立计算",
+                "也已耗尽；stepfun 未开通。⚠️ 当前账号欠费待处理，处理后置回 True",
     },
 }
 
@@ -111,10 +111,10 @@ CATALOG = {
                              "doubao", 0.0, 0.0, max_tokens=8192,
                              billing="subscription"),
     "ark-glm-flash": ModelSpec("ark-glm-flash", "ark", "glm-5-3-flash-260828",
-                               "glm", 0.0, 0.0, max_tokens=8192,
+                               "glm", 0.0, 0.0, max_tokens=16384,
                                billing="subscription"),
     "ark-glm": ModelSpec("ark-glm", "ark", "glm-5-2-260617",
-                         "glm", 0.0, 0.0, max_tokens=8192,
+                         "glm", 0.0, 0.0, max_tokens=16384,
                          billing="subscription"),
     "ark-ds-flash": ModelSpec("ark-ds-flash", "ark", "deepseek-v4-1-flash-260910",
                               "deepseek", 0.0, 0.0, max_tokens=8192,
@@ -127,6 +127,9 @@ CATALOG = {
     # 聚合渠道的价值：一个 key 补齐方舟没有的厂商（moonshot/qwen 官方直营）。
     # 实测不可用：kimi-k2.6 / MiniMax-M2.5 / deepseek-v4-flash（免费额度耗尽）、
     # stepfun（未开通）。免费额度按模型独立计算，烧完即停——跑批前先探活。
+    # ⚠️ 2026-09-26 晚：本账号全模型 Arrearage（欠费墙，qwen/glm/kimi 全拒答），
+    # 通道标停用，待账务处理后翻回 True。
+    # ⚠️ kimi-k3 实测拒 temperature=0.85（InvalidParameter），范围待校准，暂取 0.7。
     "dash-qwen-flash": ModelSpec("dash-qwen-flash", "dashscope",
                                  "qwen3.7-flash-2026-07-15",
                                  "qwen", 0.0, 0.0, max_tokens=8192,
@@ -137,7 +140,7 @@ CATALOG = {
                                billing="free_quota"),
     "dash-kimi-k3": ModelSpec("dash-kimi-k3", "dashscope", "kimi-k3",
                               "moonshot", 0.0, 0.0, max_tokens=8192,
-                              billing="free_quota"),
+                              temperature=0.7, billing="free_quota"),
 }
 
 

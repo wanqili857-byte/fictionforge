@@ -147,6 +147,11 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
                 log(f"  [error] {run_id} ch{ch}: {res['error'][:100]}")
                 break
             text = res["text"]
+            if not text.strip():
+                # llm 层已拦空正文；这里再拦一层（注入的生成器可能绕过）
+                errors.append({"chapter": ch, "error": "正文为空（生成器返回空文本）"})
+                log(f"  [error] {run_id} ch{ch}: 正文为空")
+                break
             ch_file.write_text(text + "\n", encoding="utf-8")
 
         if tier == "full":

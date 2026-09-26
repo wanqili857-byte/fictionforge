@@ -88,7 +88,12 @@ def build_request_body(spec: ModelSpec, system: str, user: str) -> dict:
 
 
 def parse_response(payload: dict) -> dict:
-    """解析响应（纯函数）：返回 text / tokens_in / tokens_out / error。"""
+    """解析响应（纯函数）：返回 text / tokens_in / tokens_out / error。
+
+    **空正文必须算 error**：思考型模型会把 max_tokens 全烧在推理上、
+    正文为空（实测 glm-5.3-flash 在 8192 上三章里空了两章）。空文本若照常
+    入库，判定器对空文本判 0 违反——白拿第一名。这是筛选实测揪出的洞。
+    """
     if not isinstance(payload, dict):
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": "响应不是 JSON 对象"}
@@ -97,10 +102,16 @@ def parse_response(payload: dict) -> dict:
         msg = err.get("message") if isinstance(err, dict) else str(err)
         return {"text": "", "tokens_in": 0, "tokens_out": 0, "error": msg}
     try:
-        text = payload["choices"][0]["message"]["content"] or ""
+        choice = payload["choices"][0]
+        text = choice["message"]["content"] or ""
     except (KeyError, IndexError, TypeError) as e:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"响应结构异常: {e}"}
+    if not text.strip():
+        finish = choice.get("finish_reason")
+        return {"text": "", "tokens_in": 0, "tokens_out": 0,
+                "error": f"正文为空（finish_reason={finish}，"
+                         f"推理占满 max_tokens？）"}
     usage = payload.get("usage") or {}
     return {
         "text": text.strip(),
