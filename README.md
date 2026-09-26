@@ -131,11 +131,36 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 ---
 
+## 顺带造的一把尺子 · LCB 长程一致性基准
+
+写长篇最难的不是文笔,是**一致性**:第 2 章死的人第 4 章又活了、第 5 章才该知道的事第 3 章就说了出来。这是 agent 的**长程状态追踪**问题——和记忆、上下文腐坏同一类。
+
+于是把框架里的一致性判定器抽出来,做成可自动判定的基准:
+
+**已实现**
+
+- 🔍 **判定器** —— 约束遵守(禁词/篇幅/POV/人称)、状态一致(死人复活/物品瞬移/时间倒流/物品双持有),纯函数、零 LLM、可精确单测
+- 🧪 **合成宇宙** —— `seed → 一部可跑的小说包`,零 LLM、**逐字节可复现**,ground truth 自带不变量自检(含阴性对照)
+- 🔌 **MCP server** —— 五个工具可直接被 agent 调用(手写协议层 + 官方 SDK 双实现)
+
+**设计中(见 `docs/BENCH_PLAN.md`)**
+
+- 🧠 **语义判定** —— 知识边界(谁在第几章知道什么)与上下文腐坏:清单式 LLM 判定 + Kappa 准入门槛
+- 📊 **跑批与指标** —— 三档 harness 消融(裸/注入/满)、pass^k、成本;抗刷分攻击实验
+- 🏆 **榜单与复现协议** —— 让第三方能提交自己的模型
+
+细节见 `bench/mcpserver/README.md`;设计与发现见 `docs/lcb-writeup.md`。
+
+> 有意思的是:判定器抓出的第一批违规,来自我自己的数据生成器——ground truth 被自己的工具查出矛盾。详见 writeup §7。
+
+---
+
 ## 状态
 
 - ✅ 引擎全链跑通(tick → spec → 正文)
 - ✅ 框架/内容包解耦——换小说不动引擎
 - ✅ **v0.3.0 修订感知管线**——canon/drafts 分家、修订回灌(素材库)、局部重生成、情节差异回流
+- 🚧 **LCB 长程一致性基准**(本分支)——判定器 / 合成宇宙 / MCP server 已完成;跑批、指标、榜单、抗刷分实验进行中
 - 🚧 文档、适配示例、示例小说 Tier1 agent,持续完善中
 
 ---
@@ -153,3 +178,5 @@ Under the hood it's built for the long haul: **unified context** (every chapter 
 **Quick start:** `pip install requests` → put an `OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` in `~/.env` → `python3 server/gen_proxy.py` → `python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` (`--force` because chapter 1 already ships with the repo — see the Chinese section above). Unit tests (no LLM, no I/O): `python3 tests/test_split_scenes.py` + `python3 tests/test_engine_core.py`.
 
 **Bring your own novel:** copy `templates/novel/`, fill `novel_config.json` + `bible/`, write a protagonist agent, done.
+
+**LCB (this branch) — a benchmark for long-horizon consistency.** The same consistency checkers the framework uses for quality gates, extracted into a benchmark: **implemented today** are constraint adherence (banned words, length, POV, pronouns) and state consistency (dead characters walking, teleporting items, time going backwards) — pure functions, zero LLM, exactly unit-testable. Inputs come from a **fully deterministic synthetic-universe generator** (`seed → a runnable novel package`, byte-identical across runs, with self-checked invariants and negative-control tests), so ground truth never wobbles. **Designed, not yet built** (see `docs/BENCH_PLAN.md`): semantic judging of knowledge boundaries and context rot (checklist-style LLM judging behind a Kappa gate), batch runs with three-tier harness ablation, and the leaderboard. Also ships as an **MCP server** — five tools an agent can call directly. See `bench/mcpserver/README.md` and `docs/lcb-writeup.md`.
