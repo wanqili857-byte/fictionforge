@@ -67,6 +67,20 @@ def test_parse_response():
           llm.parse_response({"choices": [{"message": {"content": "x"}}]})["tokens_out"] == 0)
 
 
+def test_retry_policy():
+    """429/超时类瞬态错误重试（正赛首轮：方舟账号级 429 + glm 思考超时打断跑批），
+    400/402 类硬错误不重试。"""
+    check("429 重试", llm._should_retry(429, None, 1))
+    check("5xx 重试", llm._should_retry(503, None, 1))
+    check("超时重试", llm._should_retry(None, "ReadTimeout", 1))
+    check("SSL 抖动重试", llm._should_retry(None, "SSLError", 1))
+    check("400 不重试", not llm._should_retry(400, None, 1))
+    check("402 不重试", not llm._should_retry(402, None, 1))
+    check("404 不重试", not llm._should_retry(404, None, 1))
+    check("超次数不重试", not llm._should_retry(429, None, 3))
+    check("末次不重试", not llm._should_retry(None, "ReadTimeout", 3))
+
+
 def test_empty_content_is_error():
     """空正文必须算 error：思考型模型把 max_tokens 烧光时正文为空，
     若照常入库，判定器对空文本判 0 违反——白拿第一（筛选实测 glm-5.3-flash）。"""
@@ -362,6 +376,7 @@ if __name__ == "__main__":
     test_empty_content_is_error()
     test_load_keys()
     test_proxy_policy()
+    test_retry_policy()
     test_ark_provider_wiring()
     test_subscription_billing_is_zero_not_fake_price()
     test_dashscope_wiring()

@@ -121,9 +121,34 @@ def parse_response(payload: dict) -> dict:
     }
 
 
+# 可重试 = 瞬态错误。教训来自首轮正赛：方舟账号级 429（三进程并发太密）
+# 和思考型模型 ReadTimeout（240s 不够）都会把 run 打断——这两类不该终止跑批，
+# 退避重试即可；400/402（参数错/没余额）重试无意义，必须立刻浮出来。
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+# 异常名按 type(e).__name__ 匹配（err 首段），requests 的超时家族各算各的名字
+RETRYABLE_EXC = {"Timeout", "ReadTimeout", "ConnectTimeout", "ConnectionError",
+                 "SSLError", "ProtocolError", "ReadError"}
+RETRY_BACKOFF = (30, 90)     # 秒；第 1 次重试前睡 30，第 2 次前睡 90
+
+
+def _should_retry(status: Optional[int], exc_name: Optional[str],
+                  attempt: int, max_attempts: int = 3) -> bool:
+    """纯函数：这次失败该不该重试。attempt 从 1 计。"""
+    if attempt >= max_attempts:
+        return False
+    if status is not None:
+        return status in RETRYABLE_STATUS
+    return (exc_name or "") in RETRYABLE_EXC
+
+
 def call_model(spec: ModelSpec, system: str, user: str,
-               keys: Optional[dict] = None, timeout: int = 240) -> dict:
-    """真实调用（网络层）。返回 {text, tokens_in, tokens_out, error, cost}。"""
+               keys: Optional[dict] = None, timeout: int = 420) -> dict:
+    """真实调用（网络层）。返回 {text, tokens_in, tokens_out, error, cost}。
+
+    瞬态错误（429/5xx/超时/连接抖动）按 RETRY_BACKOFF 退避重试；
+    重试后成功与一次成功在结果上无差别（失败的那几次没产出任何正文）。
+    """
+    import time
     import requests      # 仓库既有依赖；延迟导入便于离线测试
 
     keys = keys or load_keys()
@@ -136,21 +161,36 @@ def call_model(spec: ModelSpec, system: str, user: str,
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"未知 provider: {spec.provider}", "cost": 0.0}
     px = resolve_proxy(spec.provider)
-    try:
-        sess = requests.Session()
-        sess.trust_env = px["trust_env"]      # 关掉系统代理继承（国内通道必关）
-        r = sess.post(url, timeout=timeout, proxies=px["proxies"],
-                      headers={"Content-Type": "application/json",
-                               "Authorization": f"Bearer {key}"},
-                      json=build_request_body(spec, system, user))
-    except Exception as e:
-        return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                "error": f"{type(e).__name__}: {e}", "cost": 0.0}
+    sess = requests.Session()
+    sess.trust_env = px["trust_env"]      # 关掉系统代理继承（国内通道必关）
+    headers = {"Content-Type": "application/json",
+               "Authorization": f"Bearer {key}"}
+    body = build_request_body(spec, system, user)
 
-    if r.status_code != 200:
+    attempt = 0
+    while True:
+        attempt += 1
+        status, err = None, None
+        try:
+            r = sess.post(url, timeout=timeout, proxies=px["proxies"],
+                          headers=headers, json=body)
+            status = r.status_code
+        except Exception as e:
+            err = f"{type(e).__name__}: {e}"
+        if status == 200:
+            break
+        exc_name = err.split(":")[0] if err else None
+        if _should_retry(status, exc_name, attempt):
+            wait = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
+            time.sleep(wait)
+            continue
+        if err is not None:
+            return {"text": "", "tokens_in": 0, "tokens_out": 0,
+                    "error": err, "cost": 0.0}
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                "error": f"HTTP {r.status_code}: {r.text[:200]}", "cost": 0.0,
+                "error": f"HTTP {status}: {r.text[:200]}", "cost": 0.0,
                 "proxy": px["source"]}
+
     try:
         out = parse_response(r.json())
     except Exception as e:
