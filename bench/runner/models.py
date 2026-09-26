@@ -38,6 +38,7 @@ class ModelSpec:
     max_tokens: int = 4096
     temperature: float = 0.85
     billing: str = "per_token"   # "per_token"（按量）| "subscription"（订阅）
+    timeout: int = 420           # 单次调用秒数；思考型模型按推理预算折算给足
 
     def cost(self, tokens_in: int, tokens_out: int) -> float:
         """一次调用的美元成本（订阅/免费额度通道恒为 0，边际成本）。"""
@@ -111,13 +112,14 @@ CATALOG = {
                              "doubao", 0.0, 0.0, max_tokens=8192,
                              billing="subscription"),
     # glm 的 reasoning 计入 max_tokens，且在满 harness prompt 上实测能烧穿
-    # 16384（正赛 full 档 ch2 空正文 finish_reason=length）→ 32768
+    # 16384（正赛 full 档 ch2 空正文 finish_reason=length）→ 32768。
+    # 单章推理实测 >420s（mid 档 ch3 三连超时）→ timeout 1200
     "ark-glm-flash": ModelSpec("ark-glm-flash", "ark", "glm-5-3-flash-260828",
                                "glm", 0.0, 0.0, max_tokens=32768,
-                               billing="subscription"),
+                               billing="subscription", timeout=1200),
     "ark-glm": ModelSpec("ark-glm", "ark", "glm-5-2-260617",
                          "glm", 0.0, 0.0, max_tokens=32768,
-                         billing="subscription"),
+                         billing="subscription", timeout=1200),
     "ark-ds-flash": ModelSpec("ark-ds-flash", "ark", "deepseek-v4-1-flash-260910",
                               "deepseek", 0.0, 0.0, max_tokens=8192,
                               billing="subscription"),

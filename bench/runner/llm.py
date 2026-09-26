@@ -142,14 +142,17 @@ def _should_retry(status: Optional[int], exc_name: Optional[str],
 
 
 def call_model(spec: ModelSpec, system: str, user: str,
-               keys: Optional[dict] = None, timeout: int = 420) -> dict:
+               keys: Optional[dict] = None, timeout: Optional[int] = None) -> dict:
     """真实调用（网络层）。返回 {text, tokens_in, tokens_out, error, cost}。
 
     瞬态错误（429/5xx/超时/连接抖动）按 RETRY_BACKOFF 退避重试；
     重试后成功与一次成功在结果上无差别（失败的那几次没产出任何正文）。
+    timeout 缺省取 spec.timeout（思考型模型按推理预算给足）。
     """
     import time
     import requests      # 仓库既有依赖；延迟导入便于离线测试
+
+    timeout = timeout or spec.timeout
 
     keys = keys or load_keys()
     key = keys.get(_KEY_NAMES.get(spec.provider, ""), "")
