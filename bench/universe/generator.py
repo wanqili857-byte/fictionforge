@@ -47,6 +47,12 @@ _FALSE_TEMPLATES = [
 ]
 _TERMINAL_FACT = ("世界真相", "放雾的{who}就是{hero}自己——她一直在雾里找的人是她自己")
 
+# 常识型世界设定：人人从第 1 章就知道，可以随时作为「客观设定」注入
+_COMMON_FACTS = [
+    "码头靠海，雾常年不散；船要走货，得看潮",
+    "名册上记着每个来过码头的人，失踪者也在册子上",
+]
+
 
 @dataclass
 class Universe:
@@ -80,19 +86,33 @@ def generate(seed: int, chapters: int = 12, version: str = GENERATOR_VERSION) ->
     what = rng.choice(["盐箱", "缆绳", "铁锚", "灯油"])
 
     # ── 真相表 ──
+    # reveal_chapter：该事实最早允许作为「世界设定」注入的章号。
+    # 三类事实语义必须自洽（否则 harness 会泄底）：
+    #   common=True        常识设定，第 1 章起可注入（不参与知识调度）
+    #   发现型（默认）       reveal_chapter = 主角学到它的那一章（之前不得注入）
+    #   终局真相            reveal_chapter = 末章
+    #   held-out            reveal_chapter = 末章+1（谁都不学，任何章节都不得注入）
     truth = []
+    for i, s in enumerate(_COMMON_FACTS, 1):
+        truth.append({"id": f"T-{i:02d}", "category": "世界真相", "statement": s,
+                      "is_false": False, "reveal_chapter": 1, "common": True})
+    n_common = len(_COMMON_FACTS)
     for i, (cat, tpl) in enumerate(_FACT_TEMPLATES, 1):
-        truth.append({"id": f"T-{i:02d}", "category": cat,
-                      "statement": _fill(tpl, who, what, hero), "is_false": False})
+        truth.append({"id": f"T-{n_common + i:02d}", "category": cat,
+                      "statement": _fill(tpl, who, what, hero),
+                      "is_false": False, "reveal_chapter": 1, "common": False})
     for j, (cat, tpl) in enumerate(_FALSE_TEMPLATES, 1):
         truth.append({"id": f"F-{j:02d}", "category": cat,
-                      "statement": tpl, "is_false": True})
+                      "statement": tpl, "is_false": True,
+                      "reveal_chapter": 1, "common": False})
     term_cat, term_tpl = _TERMINAL_FACT
-    term_id = f"T-{len(_FACT_TEMPLATES) + 1:02d}"
+    term_id = f"T-{n_common + len(_FACT_TEMPLATES) + 1:02d}"
     truth.append({"id": term_id, "category": term_cat,
-                  "statement": _fill(term_tpl, who, what, hero), "is_false": False})
+                  "statement": _fill(term_tpl, who, what, hero),
+                  "is_false": False, "reveal_chapter": chapters, "common": False})
 
-    world_ids = [t["id"] for t in truth if t["id"].startswith("T-")]
+    world_ids = [t["id"] for t in truth if t["id"].startswith("T-")
+                 and not t.get("common")]
 
     # ── 知识表：谁在第几章知道什么 ──
     # 规则：主角均匀铺开；同伴落后；对手早知（他是代理）；见证者零散；
@@ -127,6 +147,14 @@ def generate(seed: int, chapters: int = 12, version: str = GENERATOR_VERSION) ->
     if death_ch > chapters:      # 死者不获知终局
         knowledge[cast[3]["name"]].append({"fact_id": term_id,
                                            "learned_chapter": chapters})
+
+    # 对齐 reveal_chapter 与知识调度：发现型事实只在主角学到它的那一章起可注入；
+    # held-out（谁都不学）→ 末章+1，任何章节都不得作为设定出现
+    hero_learned = {e["fact_id"]: e["learned_chapter"] for e in knowledge[hero]}
+    for t in truth:
+        if t.get("common") or t["id"] == term_id or t["is_false"]:
+            continue
+        t["reveal_chapter"] = hero_learned.get(t["id"], chapters + 1)
 
     # ── 分幕 + specs ──
     arc_count = 3
@@ -219,6 +247,30 @@ def invariants(u: Universe) -> list:
     fact_ids = {f["id"] for f in u.truth_table}
     if u.terminal_fact_id not in fact_ids:
         out.append(f"终局真相 {u.terminal_fact_id} 不在事实表")
+    for f in u.truth_table:
+        rc = f.get("reveal_chapter")
+        # chapters+1 = held-out（谁都不学，永不可注入）
+        if not isinstance(rc, int) or not (1 <= rc <= u.chapters + 1):
+            out.append(f"事实 {f['id']} 的 reveal_chapter 非法: {rc}")
+    term = next((f for f in u.truth_table if f["id"] == u.terminal_fact_id), None)
+    if term and term.get("reveal_chapter") != u.chapters:
+        out.append("终局真相的 reveal_chapter 必须等于末章"
+                   f"（现为 {term.get('reveal_chapter')}，末章 ch{u.chapters}）")
+    # 发现型事实必须与主角知识调度一致（否则 harness 会提前注入）
+    hero_learned = {e["fact_id"]: e["learned_chapter"]
+                    for e in u.knowledge.get(u.protagonist, [])}
+    for f in u.truth_table:
+        if f.get("common") or f["is_false"] or f["id"] == u.terminal_fact_id:
+            continue
+        expect = hero_learned.get(f["id"], u.chapters + 1)
+        if f["reveal_chapter"] != expect:
+            out.append(f"事实 {f['id']} reveal_chapter={f['reveal_chapter']} "
+                       f"与主角学习章 {expect} 不一致")
+    # 常识事实不参与知识调度
+    common_ids = {f["id"] for f in u.truth_table if f.get("common")}
+    sched_ids = {e["fact_id"] for es in u.knowledge.values() for e in es}
+    if common_ids & sched_ids:
+        out.append(f"常识事实不应出现在知识调度中: {sorted(common_ids & sched_ids)}")
 
     # 死亡章（同一角色可能多章，取最早）
     death_of = {}
@@ -313,6 +365,8 @@ def write_universe(u: Universe, out_dir) -> dict:
         (d / "specs" / f"ch{sp['chapter']}.json").write_text(_dump(sp), encoding="utf-8")
     tt = d / "bible" / "真相表.md"
     tt.write_text(truth_table_markdown(u), encoding="utf-8")
+    # 机器可读版（含 reveal_chapter / is_false）——供探针生成与 harness 过滤
+    (d / "bible" / "真相表.json").write_text(_dump(u.truth_table), encoding="utf-8")
     (d / "知识表.json").write_text(_dump(u.knowledge), encoding="utf-8")
     (d / "novel_config.json").write_text(_dump(novel_config(u)), encoding="utf-8")
     (d / "universe.json").write_text(_dump({
