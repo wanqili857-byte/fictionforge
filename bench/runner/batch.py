@@ -73,13 +73,18 @@ def _hash(system: str, user: str) -> str:
 
 def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
             generate_fn, judge_fn, chapters=None, prior_tail=DEFAULT_PRIOR_TAIL,
-            force=False, log=print) -> dict:
-    """跑一个 (模型 × 档位 × k) 组合：逐章生成 + 判定。返回汇总 dict。"""
+            force=False, rejudge=False, log=print) -> dict:
+    """跑一个 (模型 × 档位 × k) 组合：逐章生成 + 判定。返回汇总 dict。
+
+    rejudge=True：不动已生成正文，只用当前 judge_fn 重新判定（零 LLM 调用）。
+    判定器会持续改进（机械判据、将来的语义判据），判决必须能重算——
+    否则文本缓存着、判决却冻结，改一次判据就得重烧一遍 token。
+    """
     run_id = f"{model_spec.alias}__{tier}__k{k_index}"
     run_dir = out_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    if (run_dir / "run.json").exists() and not force:
-        log(f"  [skip] {run_id} 已完成（force 可覆盖）")
+    if (run_dir / "run.json").exists() and not force and not rejudge:
+        log(f"  [skip] {run_id} 已完成（force 覆盖重跑 / rejudge 只重判）")
         return json.loads((run_dir / "run.json").read_text(encoding="utf-8")).get("_summary", {})
 
     wanted = chapters or [s["chapter"] for s in u.specs]
@@ -89,11 +94,38 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
     cost = 0.0
     errors = []
 
+    # 逐章用量账本（断点续跑的关键）：每章落一行，续跑时先读回，
+    # 否则被跳过章节的 token/成本就永久丢失（跑完才写 run.json 的话）
+    usage_path = run_dir / "usage.jsonl"
+    prior_usage = {}
+    if usage_path.exists():
+        for line in usage_path.read_text(encoding="utf-8").splitlines():
+            try:
+                rec = json.loads(line)
+                prior_usage[str(rec["chapter"])] = rec
+            except Exception:
+                continue
+
+    def _record_usage(ch, res):
+        rec = {"chapter": ch, "tokens_in": res.get("tokens_in", 0),
+               "tokens_out": res.get("tokens_out", 0),
+               "cost": res.get("cost", 0.0),
+               "prompt_hash": prompt_hashes.get(str(ch), "")}
+        with open(usage_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
     for ch in wanted:
         spec = next(s for s in u.specs if s["chapter"] == ch)
         ch_file = run_dir / f"ch{ch}.md"
         if ch_file.exists() and not force:
             text = ch_file.read_text(encoding="utf-8").rstrip("\n")
+            prev = prior_usage.get(str(ch))
+            if prev:
+                tokens_in += prev.get("tokens_in", 0)
+                tokens_out += prev.get("tokens_out", 0)
+                cost += prev.get("cost", 0.0)
+                if prev.get("prompt_hash"):
+                    prompt_hashes[str(ch)] = prev["prompt_hash"]
             log(f"  [resume] {run_id} ch{ch}")
         else:
             system, user = build_prompt(tier, u, spec, prior_text=prior_text,
@@ -103,6 +135,7 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
             tokens_in += res.get("tokens_in", 0)
             tokens_out += res.get("tokens_out", 0)
             cost += res.get("cost", 0.0)
+            _record_usage(ch, res)
             if res.get("error"):
                 errors.append({"chapter": ch, "error": res["error"]})
                 log(f"  [error] {run_id} ch{ch}: {res['error'][:100]}")
@@ -164,7 +197,7 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
 
 def run_batch(u, model_aliases, tiers=("bare", "mid", "full"), k=1, out_dir="runs",
               generate_fn=None, judge_fn=None, chapters=None, force=False,
-              log=print) -> dict:
+              rejudge=False, log=print) -> dict:
     """跑完整矩阵。generate_fn/judge_fn 缺省用真实实现。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -181,7 +214,7 @@ def run_batch(u, model_aliases, tiers=("bare", "mid", "full"), k=1, out_dir="run
                 log(f"[run] {alias} × {tier} × k{kk}")
                 summaries.append(run_one(u, spec, tier, kk, out, generate_fn,
                                          judge_fn, chapters=chapters, force=force,
-                                         log=log))
+                                         rejudge=rejudge, log=log))
     results = {"universe": {"title": u.title, "seed": u.seed, "chapters": u.chapters},
                "runs": summaries}
     (out / "results.json").write_text(
@@ -198,6 +231,8 @@ def main():
     ap.add_argument("--k", type=int, default=1)
     ap.add_argument("--out", default="runs/first")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--rejudge", action="store_true",
+                    help="不重新生成，只用当前判定器重判已有正文（零 LLM 调用）")
     args = ap.parse_args()
 
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -205,7 +240,8 @@ def main():
 
     u = generate(seed=args.seed, chapters=args.chapters)
     res = run_batch(u, args.models.split(","), tuple(args.tiers.split(",")),
-                    k=args.k, out_dir=args.out, force=args.force)
+                    k=args.k, out_dir=args.out, force=args.force,
+                    rejudge=args.rejudge)
     total = sum(r["cost"] for r in res["runs"])
     print(f"\n总成本 ${total:.4f} | {len(res['runs'])} 个运行 → {args.out}/results.json")
 

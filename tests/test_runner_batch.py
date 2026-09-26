@@ -132,17 +132,22 @@ def test_matrix_and_layout():
     check("调用次数 = 模型×档位×章", len(gen.calls) == 2 * 3 * 3)
 
 
-def test_resume_skips_generation():
+def test_resume_skips_generation_and_keeps_cost():
     u = generate(seed=7, chapters=3)
     out = Path(tempfile.mkdtemp())
     gen1 = FakeGen()
-    run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
-              generate_fn=gen1, judge_fn=fake_judge, log=lambda *_: None)
+    r1 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen1, judge_fn=fake_judge, log=lambda *_: None)
     n1 = len(gen1.calls)
     gen2 = FakeGen()
-    run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
-              generate_fn=gen2, judge_fn=fake_judge, log=lambda *_: None)
+    r2 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen2, judge_fn=fake_judge, log=lambda *_: None)
     check("续跑不重复调用 LLM", n1 == 3 and len(gen2.calls) == 0)
+    # 逐章用量账本：续跑后成本/token 不丢
+    check("续跑保留成本", r2["runs"][0]["cost"] == r1["runs"][0]["cost"])
+    check("续跑保留 token", r2["runs"][0]["tokens_in"] == r1["runs"][0]["tokens_in"]
+          and r2["runs"][0]["tokens_out"] == r1["runs"][0]["tokens_out"])
+    check("usage.jsonl 落盘", (out / "ds-flash__mid__k0" / "usage.jsonl").exists())
 
 
 def test_full_tier_pre_post_and_fix():
@@ -200,15 +205,40 @@ def test_rules_from_universe():
     check("篇幅目标来自 spec", r.target_chars == u.specs[0]["target_chars"])
 
 
+def test_rejudge_without_regeneration():
+    """判定器升级后必须能只重判、不重跑（文本缓存，判决可重算）。"""
+    u = generate(seed=7, chapters=3)
+    out = Path(tempfile.mkdtemp())
+    gen1 = FakeGen(text="他忽然停住。")
+    run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+              generate_fn=gen1, judge_fn=fake_judge, log=lambda *_: None)
+    v1 = json.loads((out / "ds-flash__mid__k0" / "violations.json").read_text(encoding="utf-8"))
+    check("首次判定有违反", len(v1["pre_fix"]) == 3)
+
+    gen2 = FakeGen()
+    def strict_judge(text, chapter):
+        return []          # 假装判定器改了：全部放行
+    r2 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen2, judge_fn=strict_judge, rejudge=True,
+                   log=lambda *_: None)
+    check("rejudge 不调用 LLM", len(gen2.calls) == 0)
+    v2 = json.loads((out / "ds-flash__mid__k0" / "violations.json").read_text(encoding="utf-8"))
+    check("判决已按新判定器重算", v2["pre_fix"] == [])
+    check("summary 同步更新", r2["runs"][0]["violations_pre_fix"] == 0)
+    check("正文未被改动",
+          (out / "ds-flash__mid__k0" / "ch1.md").read_text(encoding="utf-8").strip() == "他忽然停住。")
+
+
 if __name__ == "__main__":
     test_request_body()
     test_parse_response()
     test_load_keys()
     test_matrix_and_layout()
-    test_resume_skips_generation()
+    test_resume_skips_generation_and_keeps_cost()
     test_full_tier_pre_post_and_fix()
     test_prior_text_chaining_and_boundary()
     test_error_breaks_but_records()
     test_rules_from_universe()
+    test_rejudge_without_regeneration()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

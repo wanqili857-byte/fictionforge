@@ -159,9 +159,16 @@ def test_quoted_span_not_narration():
         vs = mechanical_judge(text, rules, "r1", 1)
         check(f"引文内第一人称豁免: {text[:10]}",
               not [v for v in vs if v.probe_id.startswith("cons-pov")])
-    # 旁白第一人称仍要报
+    # 旁白第一人称仍要报（句首）
     vs2 = mechanical_judge("我蹲进凹陷。", rules, "r1", 1)
-    check("旁白第一人称仍报", len([v for v in vs2 if v.probe_id.startswith("cons-pov")]) == 1)
+    check("句首第一人称仍报", len([v for v in vs2 if v.probe_id.startswith("cons-pov")]) == 1)
+    # ↓ 真实跑批抓到的第四类误报：无引号直接引语（中文小说正当手法）
+    for text in ["苏茜说我没听说有这回事。",
+                 "她抬头说，那你去跟柳娘说，这批箱我查完了再放。",
+                 "宋管事问，这箱是你的？"]:
+        vs3 = mechanical_judge(text, rules, "r1", 1)
+        check(f"无引号引语中之我不报: {text[:10]}",
+              not [v for v in vs3 if v.probe_id.startswith("cons-pov")])
 
 
 # ── 边界与确定性 ──────────────────────────────────────────────────────

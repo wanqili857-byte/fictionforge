@@ -17,11 +17,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from bench.contracts import Violation, ViolationType, DetectorKind, Severity
-from bench.judges.text_utils import narration
+from bench.judges.text_utils import narration, sentences
 
 _DIALOG_RE = re.compile(r"^\s*[「\"“]")   # 直角引号 / 直引号 / 弯引号 “
 _SENT_SPLIT = re.compile(r"(?<=[。！？])")
-_FIRST_PERSON_RE = re.compile(r"我们|我")   # 我们优先，避免重复报
+# 句首第一人称（真违规形状）；句中「我」多为无引号引语，见下方判定注释
+_FIRST_PERSON_HEAD = re.compile(r"^(我们|我)")
 
 
 @dataclass
@@ -113,10 +114,16 @@ def mechanical_judge(text: str, rules: MechanicalRules, run_id: str,
             continue
         narr_lines.append(narr)
         if rules.pov == "third_limited":
-            for m in _FIRST_PERSON_RE.finditer(narr):
-                out.append(V("cons-pov", Severity.HIGH,
-                             {"word": m.group(0),
-                              "span": narr[max(0, m.start() - 8): m.end() + 8]}))
+            # 只认**句首**第一人称：真违规的形状是「我蹲进凹陷。」
+            # 而句中的「我」多为无引号直接引语（中文小说正当手法）：
+            #   `苏茜说我没听说有这回事。` / `抬头说，那你去跟柳娘说，这批箱我查完了再放。`
+            # 首轮跑批实测：句中「我」全部是引语，句首判据零误报。
+            for sent in sentences(narr):
+                m = _FIRST_PERSON_HEAD.match(sent)
+                if m:
+                    out.append(V("cons-pov", Severity.HIGH,
+                                 {"word": m.group(0),
+                                  "span": sent[:24]}))
 
     opp = _opposite(rules.protagonist_pronoun)
     if opp and rules.protagonist:
