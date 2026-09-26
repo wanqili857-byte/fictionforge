@@ -143,9 +143,20 @@ def generate(seed: int, chapters: int = 12, version: str = GENERATOR_VERSION) ->
         arcs[-1]["chapters"].extend(range(ch, chapters + 1))
 
     slots = ["上午", "中午", "黄昏"]
+
+    def pronoun_of(name):
+        for cc in cast:
+            if cc["name"] == name:
+                return "她" if cc["gender"] == "f" else "他"
+        return "他"
+
+    hero_p = pronoun_of(hero)
     specs = []
     for c in range(1, chapters + 1):
         secs = []
+        # 死者不在后续章节作为行动者出现（ground truth 不留歧义：
+        # 名字出现即被账本记为「在场」，会让合成宇宙自相矛盾）
+        second = cast[3]["name"] if c <= death_ch else cast[2]["name"]
         for s_i, (sid, slot) in enumerate(zip(["一", "二", "三"], slots)):
             loc = _LOCATIONS[(c + s_i) % len(_LOCATIONS)]
             if s_i == 0:
@@ -154,10 +165,10 @@ def generate(seed: int, chapters: int = 12, version: str = GENERATOR_VERSION) ->
                         f"「第{c}日，{what}少了三箱」。")
             elif s_i == 1:
                 desc = (f"{cast[1]['name']}把打听到的话带给{hero}："
-                        f"{cast[3]['name']}以前也问过同样的问题。")
+                        f"{second}以前也问过同样的问题。")
             else:
                 desc = (f"{loc}起了争执，{hero}没有让步，"
-                        f"她把手按在{what}上，指节发白。")
+                        f"{hero_p}把手按在{what}上，指节发白。")
             secs.append({
                 "id": sid, "subject": f"第{c}日·{loc}",
                 "scene_anchor": f"第{c}天{slot} @{loc}",
@@ -230,6 +241,17 @@ def invariants(u: Universe) -> list:
     learned = {e["fact_id"] for es in u.knowledge.values() for e in es}
     if not (fact_ids - learned):
         out.append("无 held-out 事实（探针池为空）")
+
+    # 死者不得在死后章节的 spec 描述里出现——名字出现即被账本记为「在场」，
+    # 会让合成宇宙自相矛盾（真客户端验收时抓到的类）
+    for sp in u.specs:
+        for nm, dch in death_of.items():
+            if sp["chapter"] > dch:
+                for sec in sp.get("sections", []):
+                    if nm in (sec.get("description") or ""):
+                        out.append(f"{nm} 死于 ch{dch}，却在 ch{sp['chapter']} "
+                                   f"的描述中被当作行动者点名")
+                        break
 
     # 弧结构
     for sp in u.specs:

@@ -83,6 +83,16 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
  | python3 scripts/lcb_mcp.py --hand-rolled
 ```
 
+## 已知差异与限制
+
+- **SDK 版并发执行工具调用**：SDK v2 会并行处理同一批请求；若客户端把
+  `universe_generate` 与 `novel_ledger` 背靠背发出（不等结果），ledger 可能
+  读到只写了一半的目录。正常 agent 会等结果再调下一步，不受影响；
+  手写版是单线程顺序处理，无此问题。
+- **手写版仅 tools 子集**：未实现 resources / prompts / 取消 / HTTP 传输。
+- **stdin 必须保持打开**：手工用管道测试时若写完立即关闭 stdin，stdio 服务端
+  会 EOF 退出，异步工具来不及回写响应（表现为「响应丢失」）。
+
 ## 测试
 
 ```bash

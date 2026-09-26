@@ -148,6 +148,26 @@ def test_invariants():
     check("阴性对照：提前获知终局被抓到",
           any("提前获知终局" in b for b in invariants(u2)))
 
+    # 另一个对照：死者被写进死后章节的描述（真客户端验收时抓到的类）
+    u3 = generate(seed=3, chapters=8)
+    dead3, dch3 = None, None
+    for sp in u3.specs:
+        if (sp.get("state_delta") or {}).get("deaths"):
+            dead3 = sp["state_delta"]["deaths"][0]
+            dch3 = sp["chapter"]
+            break
+    check("对照前置：确有死亡声明", dead3 is not None)
+    check("正例：死者不出现在死后章节描述",
+          not any(dead3 in (sec.get("description") or "")
+                  for sp in u3.specs if sp["chapter"] > dch3
+                  for sec in sp["sections"]))
+    for sp in u3.specs:
+        if sp["chapter"] == dch3 + 1:
+            sp["sections"][0]["description"] += f" {dead3}走过来。"
+            break
+    check("阴性对照：死后被点名被抓到",
+          any("被当作行动者点名" in b for b in invariants(u3)))
+
 
 # ── 落盘 ↔ 解析往返 ───────────────────────────────────────────────────
 
