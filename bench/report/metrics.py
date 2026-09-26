@@ -287,6 +287,54 @@ def _cost_cell(cost, billing: str) -> str:
     return f"{cost}"
 
 
+# ── 榜单（W10）：静态、可复算，排序规则公开 ─────────────────────────────
+
+def leaderboard(agg: list, tiers=("bare", "mid", "full")) -> list:
+    """从模型汇总出榜单：核心违反率升序、并列同名次、缺档位降级。
+
+    规则（与 BENCH_PROTOCOL §8 一致）：
+    - 排序键 = bare 档核心违反率（裸能力），并列取相同名次（competition ranking）
+    - 档位不齐的模型照常上榜但标 partial——榜单不藏半成品，读者自己看列
+    - 未完成（0 章）不进榜（build_table/aggregate 已剔除，这里再兜一层）
+    """
+    entries = []
+    for a in agg:
+        rates = a.get("core_rate_by_tier") or {}
+        bare = rates.get("bare")
+        if bare is None:
+            continue
+        entries.append({
+            "model": a["model"],
+            "bare": bare, "mid": rates.get("mid"), "full": rates.get("full"),
+            "billing": a.get("billing", "per_token"),
+            "missing": [t for t in tiers if t not in rates],
+        })
+    entries.sort(key=lambda e: (e["bare"], e["model"]))
+    ranked, prev, rank = [], object(), 0
+    for i, e in enumerate(entries, 1):
+        if e["bare"] != prev:
+            rank, prev = i, e["bare"]
+        e["rank"] = rank
+        ranked.append(e)
+    return ranked
+
+
+def render_leaderboard(ranked: list) -> str:
+    lines = ["# LCB 榜单（核心违反率，升序 = 越一致）", "",
+             "> 排序键 = bare 档核心违反率（裸能力）；并列同名次。",
+             "> `订阅`/`免费额度` = 零边际成本通道，成本列不可与按量行比钱数。",
+             "> 缺档位 = 跑批未完成该档，数字照登但不可当完整行读。", "",
+             "| 名次 | 模型 | bare | mid | full | 计费 | 缺档 |",
+             "|---|---|---|---|---|---|---|"]
+    for e in ranked:
+        miss = ",".join(e["missing"]) if e["missing"] else "—"
+        cell = lambda v: "—" if v is None else v
+        lines.append(f"| {e['rank']} | {e['model']} | {e['bare']} | "
+                     f"{cell(e.get('mid'))} | {cell(e.get('full'))} | "
+                     f"{_cost_cell(0.0, e.get('billing', 'per_token'))} | {miss} |")
+    return "\n".join(lines) + "\n"
+
+
 def render_markdown(rows: list, agg: list) -> str:
     lines = ["# LCB 跑批结果", "",
              "> 核心违反 = 剔除「篇幅合规」后的违反（状态/视角/文体/知识边界），",

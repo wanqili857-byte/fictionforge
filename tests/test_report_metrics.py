@@ -202,6 +202,28 @@ def test_subscription_cost_not_rendered_as_zero():
     check("口径说明进表头", "成本口径" in md and "零边际成本通道" in md)
 
 
+def test_leaderboard():
+    """榜单：升序、并列同名次、缺档标注、未完成不进榜。"""
+    ranked = M.leaderboard([
+        {"model": "b", "core_rate_by_tier": {"bare": 3.3, "mid": 1.1, "full": 0.0},
+         "billing": "subscription"},
+        {"model": "a", "core_rate_by_tier": {"bare": 1.1, "full": 0.5},
+         "billing": "per_token"},          # 缺 mid
+        {"model": "c", "core_rate_by_tier": {"bare": 1.1}},   # 与 a 并列，缺两档
+        {"model": "d", "core_rate_by_tier": {}},              # 无 bare → 不进榜
+    ])
+    check("缺 bare 不进榜", [e["model"] for e in ranked] == ["a", "c", "b"])
+    check("升序", ranked[0]["bare"] <= ranked[-1]["bare"])
+    check("并列同名次", ranked[0]["rank"] == ranked[1]["rank"] == 1
+          and ranked[2]["rank"] == 3)
+    check("缺档列出", ranked[0]["missing"] == ["mid"] and ranked[1]["missing"] == ["mid", "full"])
+    check("计费口径带上", ranked[2]["billing"] == "subscription")
+    md = M.render_leaderboard(ranked)
+    check("榜单渲染含口径说明", "排序键" in md and "零边际成本" in md)
+    check("缺档渲染为 —", "| 3 | b | 3.3 | 1.1 | 0.0 | 订阅 | — |" in md
+          and "| 1 | a | 1.1 | — | 0.5 | 0.0 | mid |" in md)
+
+
 def test_load_runs():
     out = Path(tempfile.mkdtemp())
     d = out / "m1__full__k0"
@@ -246,6 +268,7 @@ if __name__ == "__main__":
     test_incomplete_and_paired_gate()
     test_render_markdown()
     test_subscription_cost_not_rendered_as_zero()
+    test_leaderboard()
     test_load_runs()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)
