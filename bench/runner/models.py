@@ -110,11 +110,13 @@ CATALOG = {
     "ark-db-code": ModelSpec("ark-db-code", "ark", "doubao-seed-2-0-code-preview-260215",
                              "doubao", 0.0, 0.0, max_tokens=8192,
                              billing="subscription"),
+    # glm 的 reasoning 计入 max_tokens，且在满 harness prompt 上实测能烧穿
+    # 16384（正赛 full 档 ch2 空正文 finish_reason=length）→ 32768
     "ark-glm-flash": ModelSpec("ark-glm-flash", "ark", "glm-5-3-flash-260828",
-                               "glm", 0.0, 0.0, max_tokens=16384,
+                               "glm", 0.0, 0.0, max_tokens=32768,
                                billing="subscription"),
     "ark-glm": ModelSpec("ark-glm", "ark", "glm-5-2-260617",
-                         "glm", 0.0, 0.0, max_tokens=16384,
+                         "glm", 0.0, 0.0, max_tokens=32768,
                          billing="subscription"),
     "ark-ds-flash": ModelSpec("ark-ds-flash", "ark", "deepseek-v4-1-flash-260910",
                               "deepseek", 0.0, 0.0, max_tokens=8192,
