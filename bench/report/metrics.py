@@ -275,12 +275,16 @@ def aggregate_by_model(runs: dict) -> list:
 
 
 def _cost_cell(cost, billing: str) -> str:
-    """订阅通道的成本列不能显示 $0——那会被读成「免费」，而不是「边际成本为 0」。
+    """零边际成本通道的成本列不能显示 $0——那会被读成「免费」，而不是「边际成本为 0」。
 
-    订阅制跑批的可比量是 **token 用量**（manifest 里照常记录），不是美元。
-    混合通道的汇总表里也按同一口径标注，避免拿订阅行去和按量行的钱数比。
+    订阅/免费额度跑批的可比量是 **token 用量**（manifest 里照常记录），不是美元。
+    混合通道的汇总表里也按同一口径标注，避免拿零边际成本行去和按量行的钱数比。
     """
-    return "订阅" if billing == "subscription" else f"{cost}"
+    if billing == "subscription":
+        return "订阅"
+    if billing == "free_quota":
+        return "免费额度"
+    return f"{cost}"
 
 
 def render_markdown(rows: list, agg: list) -> str:
@@ -291,7 +295,7 @@ def render_markdown(rows: list, agg: list) -> str:
              "> **解读警示**：k=1 时档位间的差值混着采样噪声（同一 prompt 两次运行",
              "> 本就会抖动），此时只能看方向、不能当精确归因；要谈归因需 k≥3。",
              "> 重判免费（`--rejudge` 不调 LLM），重生成才花钱。",
-             "> **成本口径**：`订阅` = 走订阅额度，边际成本为 0，该通道的可比量是",
+             "> **成本口径**：`订阅`/`免费额度` = 零边际成本通道，可比量是",
              "> token 用量而非美元；不可与按量计费通道的钱数直接比较。", "",
              "## 每次运行", "",
              "| run | 模型 | 档位 | k | 字数 | 总违反 | 核心违反 | 核心/万字 | 篇幅 | 文体 | 视角 | 状态 | 修前→修后 | 成本$ |",

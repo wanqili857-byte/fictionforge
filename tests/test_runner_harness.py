@@ -51,21 +51,24 @@ def test_models_catalog():
             ok = False
             print(f"      · {alias} 字段不完整")
         # 价格口径随计费方式走：按量通道必须有正价（否则成本会静默算成 0），
-        # 订阅通道必须是 0（否则会伪造出一个不存在的美元支出）
+        # 订阅/免费额度通道必须是 0（否则会伪造出一个不存在的美元支出）
         if m.billing == "per_token" and (m.price_in <= 0 or m.price_out <= 0):
             ok = False
             print(f"      · {alias} 按量通道价格应为正")
-        if m.billing == "subscription" and (m.price_in or m.price_out
-                                            or m.cost(10**6, 10**6) != 0.0):
+        if m.billing in ("subscription", "free_quota") and (
+                m.price_in or m.price_out or m.cost(10**6, 10**6) != 0.0):
             ok = False
-            print(f"      · {alias} 订阅通道价格应为 0 且成本恒为 0")
-        if m.billing not in ("per_token", "subscription"):
+            print(f"      · {alias} 零边际成本通道价格应为 0 且成本恒为 0")
+        if m.billing not in ("per_token", "subscription", "free_quota"):
             ok = False
             print(f"      · {alias} 未知计费方式 {m.billing}")
         if m.max_tokens <= 0 or not (0 <= m.temperature <= 2):
             ok = False
     check("每个 ModelSpec 字段完整且价格口径与计费方式一致", ok)
     check("跨家族 ≥3", len({m.family for m in models.CATALOG.values()}) >= 3)
+    check("跨厂商 ≥4（moonshot 只在百炼聚合渠道）",
+          len({m.provider for m in models.CATALOG.values()}) >= 3
+          and "moonshot" in {m.family for m in models.CATALOG.values()})
     check("价格快照带日期", bool(models.PRICES_FETCHED))
     try:
         models.get("不存在的模型")

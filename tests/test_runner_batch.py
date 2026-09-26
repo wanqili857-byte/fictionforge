@@ -122,7 +122,23 @@ def test_subscription_billing_is_zero_not_fake_price():
     """订阅通道边际成本 = 0，且不能靠 price 字段伪装成按量计费。"""
     s = models.get("ark-db-lite")
     check("订阅模型成本恒为 0", s.cost(100000, 100000) == 0.0)
+    fq = models.get("dash-kimi-k3")
+    check("免费额度模型成本恒为 0", fq.cost(100000, 100000) == 0.0)
+    check("免费额度 billing 标记", fq.billing == "free_quota")
     check("按量模型照常计价", models.get("ds-flash").cost(1_000_000, 0) == 0.05)
+
+
+def test_dashscope_wiring():
+    """百炼聚合渠道：端点、key 名、直连策略、kimi/qwen 家族覆盖。"""
+    check("百炼端点 compatible-mode",
+          llm._BASE_URLS["dashscope"].endswith("/compatible-mode/v1/chat/completions"))
+    check("百炼 key 名", llm._KEY_NAMES["dashscope"] == "DASHSCOPE_API_KEY")
+    check("百炼直连", llm.resolve_proxy("dashscope", {})["trust_env"] is False)
+    check("kimi 家族补上了（方舟没有）",
+          models.families(["dash-kimi-k3"]) == {"moonshot"})
+    check("qwen 家族回到目录（openrouter 停用后）",
+          models.get("dash-qwen-max").family == "qwen"
+          and models.get("dash-qwen-flash").family == "qwen")
 
 
 def test_channel_gate_fails_fast():
@@ -317,6 +333,7 @@ if __name__ == "__main__":
     test_proxy_policy()
     test_ark_provider_wiring()
     test_subscription_billing_is_zero_not_fake_price()
+    test_dashscope_wiring()
     test_channel_gate_fails_fast()
     test_summary_records_billing()
     test_matrix_and_layout()

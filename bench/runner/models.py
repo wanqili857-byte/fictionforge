@@ -10,11 +10,15 @@ provider 通道：
 - "deepseek"    直连 https://api.deepseek.com（备用通道）
 - "ark"         火山方舟（Ark）coding plan，OpenAI 兼容端点
                 https://ark.cn-beijing.volces.com/api/coding/v3
+- "dashscope"   阿里云百炼 OpenAI 兼容端点（聚合多家：qwen/kimi/glm/minimax…）
+                https://dashscope.aliyuncs.com/compatible-mode/v1
 
-**计费口径（重要）**：`billing="per_token"` 时 `cost()` 是真实美元支出；
-`billing="subscription"` 时模型走订阅额度，**边际成本为 0**，
-此时 price_in/price_out 仅为 0 占位，成本列不可与按量计费通道直接比较——
-订阅通道的可比量是 token 用量（manifest 里照常记录）。
+**计费口径（重要）**：
+- `billing="per_token"`：`cost()` 是真实美元支出，price 必须为正
+- `billing="subscription"`：订阅额度，边际成本 0（方舟 coding plan）
+- `billing="free_quota"`：免费额度内边际成本 0，烧完即停（百炼三方模型）
+  ——两种 0 成本口径在报表里都**不得**显示为 $0（会被读成「免费」而非
+  「边际成本为 0」），可比量是 token 用量
 """
 
 from dataclasses import dataclass
@@ -36,8 +40,8 @@ class ModelSpec:
     billing: str = "per_token"   # "per_token"（按量）| "subscription"（订阅）
 
     def cost(self, tokens_in: int, tokens_out: int) -> float:
-        """一次调用的美元成本（订阅通道恒为 0，边际成本）。"""
-        if self.billing == "subscription":
+        """一次调用的美元成本（订阅/免费额度通道恒为 0，边际成本）。"""
+        if self.billing in ("subscription", "free_quota"):
             return 0.0
         return (tokens_in * self.price_in + tokens_out * self.price_out) / 1_000_000.0
 
@@ -54,6 +58,12 @@ CHANNELS = {
         "available": True,
         "note": "火山方舟 coding plan（订阅制，边际成本 0）。"
                 "注意：本账号无 Kimi 通道——kimi-k2.x 在方舟上返回 UnsupportedModel",
+    },
+    "dashscope": {
+        "available": True,
+        "note": "阿里云百炼（聚合渠道）：qwen 免费额度 + 三方模型按厂商各发免费额度。"
+                "实测可用 kimi-k3（k2.6 免费额度已耗尽）；MiniMax/deepseek-v4 三方额度"
+                "也已耗尽；stepfun 未开通。额度烧完即停，模型免费额度独立计算",
     },
 }
 
@@ -112,6 +122,22 @@ CATALOG = {
     "ark-ds-pro": ModelSpec("ark-ds-pro", "ark", "deepseek-v4-pro-ga-260813",
                             "deepseek", 0.0, 0.0, max_tokens=8192,
                             billing="subscription"),
+
+    # ── 阿里云百炼通道（免费额度，2026-09-26 逐个实测可用）──────────────
+    # 聚合渠道的价值：一个 key 补齐方舟没有的厂商（moonshot/qwen 官方直营）。
+    # 实测不可用：kimi-k2.6 / MiniMax-M2.5 / deepseek-v4-flash（免费额度耗尽）、
+    # stepfun（未开通）。免费额度按模型独立计算，烧完即停——跑批前先探活。
+    "dash-qwen-flash": ModelSpec("dash-qwen-flash", "dashscope",
+                                 "qwen3.7-flash-2026-07-15",
+                                 "qwen", 0.0, 0.0, max_tokens=8192,
+                                 billing="free_quota"),
+    "dash-qwen-max": ModelSpec("dash-qwen-max", "dashscope",
+                               "qwen3.7-max-2026-06-08",
+                               "qwen", 0.0, 0.0, max_tokens=8192,
+                               billing="free_quota"),
+    "dash-kimi-k3": ModelSpec("dash-kimi-k3", "dashscope", "kimi-k3",
+                              "moonshot", 0.0, 0.0, max_tokens=8192,
+                              billing="free_quota"),
 }
 
 

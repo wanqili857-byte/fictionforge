@@ -17,11 +17,14 @@ _BASE_URLS = {
     # 火山方舟 coding plan（OpenAI 兼容端点）。注意路径是 /api/coding/v3，
     # 不是 /api/v3——后者不认 coding plan 的订阅模型（返回 NotFound）。
     "ark": "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
+    # 阿里云百炼 OpenAI 兼容端点（聚合渠道：qwen 官方 + kimi/glm/minimax 等三方）
+    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
 }
 _KEY_NAMES = {
     "openrouter": "OPENROUTER_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
     "ark": "ARK_API_KEY",
+    "dashscope": "DASHSCOPE_API_KEY",
 }
 
 # 代理策略：**必须显式写**，不能靠环境默认。
@@ -32,6 +35,7 @@ _KEY_NAMES = {
 _PROXY_POLICY = {
     "ark": "direct",        # 国内直连
     "deepseek": "direct",   # 国内直连
+    "dashscope": "direct",  # 国内直连
     "openrouter": "system", # 需要代理出海
 }
 

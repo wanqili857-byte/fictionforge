@@ -185,6 +185,7 @@ def test_render_markdown():
 def test_subscription_cost_not_rendered_as_zero():
     """订阅通道成本列不能显示 $0——会被读成「免费」，与「边际成本为 0」不是一回事。"""
     check("订阅标为订阅", M._cost_cell(0.0, "subscription") == "订阅")
+    check("免费额度标为免费额度", M._cost_cell(0.0, "free_quota") == "免费额度")
     check("按量照常显示数字", M._cost_cell(0.0013, "per_token") == "0.0013")
 
     def run(model, tier, billing):
@@ -198,7 +199,7 @@ def test_subscription_cost_not_rendered_as_zero():
     md = M.render_markdown(M.build_table(runs), M.aggregate_by_model(runs))
     check("订阅行渲染为订阅", "| ark | bare | 0 | 1000 | 0 | 0 | 0.0 | 0 | 0 | 0 | 0 | — | 订阅 |" in md)
     check("按量行仍显示美元", "| paid | bare | 0 | 1000 | 0 | 0 | 0.0 | 0 | 0 | 0 | 0 | — | 0.0 |" in md)
-    check("口径说明进表头", "成本口径" in md and "边际成本为 0" in md)
+    check("口径说明进表头", "成本口径" in md and "零边际成本通道" in md)
 
 
 def test_load_runs():
