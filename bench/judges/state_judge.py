@@ -19,6 +19,19 @@ from bench.judges.text_utils import is_dialogue, sentences, has_past_marker
 _DAY_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*天")
 _VIOL_CH_RE = re.compile(r"第(\d+)章")
 
+# 死者活动判据 v2 —— 用正赛真实 FP 校准（db-lite 一章 12 条全是遗物/回忆性指称）：
+# 「老麦的名字写在册子上」「是老麦的字」「老麦的日志」「老麦当时蹲在这」——
+# **死后点名 ≠ 死人复活**。判据改正向证据：
+#   豁免：过去时标记 / 遗物回忆语境（名册·字迹·日志·写/刻/记…）/ 领格「老麦的X」
+#   命中：死者名后 6 字窗内出现**活动动词**（复活 = 继续行动，不是被提及）
+_MEMORIAL_RE = re.compile(
+    r"名册|名[字单]|流水册|日志|日记|字迹|笔迹|遗[物言迹]|照片|画像|碑|"
+    r"写下|写着|刻着|记着|印着|画着|想起|记得|回忆|生前|尸体|坟")
+_ACTIVITY_VERBS = ("走", "跑", "站", "坐", "蹲", "躺", "靠", "拿", "抓", "攥",
+                   "握", "推", "拉", "举", "抬", "冲", "退", "追", "递", "塞",
+                   "伸手", "开口", "说话", "喊", "笑", "哭", "点头", "摇头",
+                   "转身", "回头", "出现", "停下", "盯着", "看着", "问")
+
 _CN_DIGITS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
               "六": 6, "七": 7, "八": 8, "九": 9}
 
@@ -65,13 +78,22 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
             if is_dialogue(line):
                 continue
             for sent in sentences(line):
+                if has_past_marker(sent) or _MEMORIAL_RE.search(sent):
+                    continue
                 for name in sorted(dead):
-                    if name in sent and not has_past_marker(sent):
+                    idx = sent.find(name)
+                    if idx < 0:
+                        continue
+                    pre = sent[max(0, idx - 4):idx]      # 显形动词可在名字前：出现老周
+                    tail = sent[idx + len(name): idx + len(name) + 6]
+                    if tail.startswith("的") and "身影" not in tail and "出现" not in pre:
+                        continue                          # 领格：老麦的X
+                    if "出现" in pre or any(v in tail for v in _ACTIVITY_VERBS):
                         out.append(V("state-dead", Severity.HIGH,
                                      {"span": sent[:50], "character": name},
                                      confidence=0.7,
-                                     note="已声明死亡的角色在正文中活动"
-                                          "（无回忆/遗物等过去时标记）"))
+                                     note="死者名后出现活动动词"
+                                          "（遗物/回忆语境已豁免）"))
 
     # 2. 时间倒流：账本自身的时间线违规（只报本章及之前）
     for vtext in ledger.timeline_violations():
