@@ -277,6 +277,28 @@ def test_resume_skips_generation_and_keeps_cost():
     check("usage.jsonl 落盘", (out / "ds-flash__mid__k0" / "usage.jsonl").exists())
 
 
+def test_resume_skips_only_completed_runs():
+    """带错误中断的 run 也写过 run.json——续跑必须 redo 它，不能静默冒充完成。"""
+    u = generate(seed=7, chapters=3)
+    out = Path(tempfile.mkdtemp())
+    gen = FakeGen(error_at=2)   # ch2 失败：ch1 生成、run.json 带 errors 落盘
+    r1 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen, judge_fn=fake_judge, log=lambda *_: None)
+    check("首轮中断留残缺 manifest", r1["runs"][0]["errors"]
+          and r1["runs"][0]["chapters_done"] == 1)
+    gen2 = FakeGen()
+    r2 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen2, judge_fn=fake_judge, log=lambda *_: None)
+    check("残缺 run 被 redo 而非 skip", len(gen2.calls) > 0)
+    check("redo 后补齐到完整", r2["runs"][0]["chapters_done"] == 3
+          and not r2["runs"][0]["errors"])
+    gen3 = FakeGen()
+    r3 = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                   generate_fn=gen3, judge_fn=fake_judge, log=lambda *_: None)
+    check("补齐后的 run 才真正 skip", len(gen3.calls) == 0
+          and r3["runs"][0]["chapters_done"] == 3)
+
+
 def test_full_tier_pre_post_and_fix():
     u = generate(seed=7, chapters=2)
     out = Path(tempfile.mkdtemp())
@@ -384,6 +406,7 @@ if __name__ == "__main__":
     test_summary_records_billing()
     test_matrix_and_layout()
     test_resume_skips_generation_and_keeps_cost()
+    test_resume_skips_only_completed_runs()
     test_full_tier_pre_post_and_fix()
     test_prior_text_chaining_and_boundary()
     test_error_breaks_but_records()

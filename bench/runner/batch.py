@@ -83,11 +83,21 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
     run_id = f"{model_spec.alias}__{tier}__k{k_index}"
     run_dir = out_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
-    if (run_dir / "run.json").exists() and not force and not rejudge:
-        log(f"  [skip] {run_id} 已完成（force 覆盖重跑 / rejudge 只重判）")
-        return json.loads((run_dir / "run.json").read_text(encoding="utf-8")).get("_summary", {})
-
     wanted = chapters or [s["chapter"] for s in u.specs]
+    if (run_dir / "run.json").exists() and not force and not rejudge:
+        prev = json.loads((run_dir / "run.json").read_text(encoding="utf-8")
+                          ).get("_summary", {})
+        # **只有真完成才跳过**：带错误中断的 run 也写 run.json（记录 errors 与
+        # 已完成章），首轮实测它被当成「已完成」跳过——残缺 run 静默冒充完整结果。
+        # 未完成 → 续跑（已有章节文件会逐章跳过，token 不重复烧）。
+        if not prev.get("errors") and prev.get("chapters_done") == len(wanted):
+            log(f"  [skip] {run_id} 已完成（force 覆盖重跑 / rejudge 只重判）")
+            return prev
+        log(f"  [redo] {run_id} 上次未完成"
+            f"（{prev.get('chapters_done')}/{len(wanted)} 章，"
+            f"{len(prev.get('errors') or [])} 错），续跑")
+        summary_prev = prev
+
     prior_text, prompt_hashes, chapter_paths = "", {}, {}
     violations = {"pre_fix": [], "post_fix": []}
     tokens_in = tokens_out = 0
