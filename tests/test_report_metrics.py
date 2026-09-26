@@ -182,6 +182,25 @@ def test_render_markdown():
 
 # ── 装载（I/O 层）────────────────────────────────────────────────────
 
+def test_subscription_cost_not_rendered_as_zero():
+    """订阅通道成本列不能显示 $0——会被读成「免费」，与「边际成本为 0」不是一回事。"""
+    check("订阅标为订阅", M._cost_cell(0.0, "subscription") == "订阅")
+    check("按量照常显示数字", M._cost_cell(0.0013, "per_token") == "0.0013")
+
+    def run(model, tier, billing):
+        return {"model": model, "tier": tier, "k": 0, "chars": 1000, "cost": 0.0,
+                "billing": billing,
+                "summary": {"model": model, "tier": tier, "k": 0,
+                            "billing": billing, "chapters_done": 6},
+                "violations": {"pre_fix": [], "post_fix": []}}
+    runs = {"ark__bare__k0": run("ark", "bare", "subscription"),
+            "paid__bare__k0": run("paid", "bare", "per_token")}
+    md = M.render_markdown(M.build_table(runs), M.aggregate_by_model(runs))
+    check("订阅行渲染为订阅", "| ark | bare | 0 | 1000 | 0 | 0 | 0.0 | 0 | 0 | 0 | 0 | — | 订阅 |" in md)
+    check("按量行仍显示美元", "| paid | bare | 0 | 1000 | 0 | 0 | 0.0 | 0 | 0 | 0 | 0 | — | 0.0 |" in md)
+    check("口径说明进表头", "成本口径" in md and "边际成本为 0" in md)
+
+
 def test_load_runs():
     out = Path(tempfile.mkdtemp())
     d = out / "m1__full__k0"
@@ -191,7 +210,8 @@ def test_load_runs():
     (d / "ch1.fixed.md").write_text("修正稿" * 100, encoding="utf-8")     # 应被排除
     (d / "run.json").write_text(json.dumps({
         "run_id": "m1__full__k0", "cost": {"currency_cost": 0.02},
-        "_summary": {"model": "m1", "tier": "full", "k": 0},
+        "_summary": {"model": "m1", "tier": "full", "k": 0,
+                     "billing": "subscription"},
     }), encoding="utf-8")
     (d / "violations.json").write_text(json.dumps(
         {"pre_fix": [vio("constraint")], "post_fix": []}), encoding="utf-8")
@@ -200,7 +220,15 @@ def test_load_runs():
     r = runs["m1__full__k0"]
     check("字数排除修正稿", r["chars"] == 60)
     check("成本读出", r["cost"] == 0.02)
+    check("计费口径读出", r["billing"] == "subscription")
     check("违反读出", len(r["violations"]["pre_fix"]) == 1)
+
+    # 缺 billing 字段的老 run.json（v1 之前）：按量口径兜底，不误标订阅
+    (d / "run.json").write_text(json.dumps({
+        "run_id": "m1__full__k0", "cost": {"currency_cost": 0.02},
+        "_summary": {"model": "m1", "tier": "full", "k": 0},
+    }), encoding="utf-8")
+    check("老 manifest 兜底为按量", M.load_runs(out)["m1__full__k0"]["billing"] == "per_token")
 
     empty = Path(tempfile.mkdtemp())
     check("空目录返回空", M.load_runs(empty) == {})
@@ -216,6 +244,7 @@ if __name__ == "__main__":
     test_aggregate_by_model()
     test_incomplete_and_paired_gate()
     test_render_markdown()
+    test_subscription_cost_not_rendered_as_zero()
     test_load_runs()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

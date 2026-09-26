@@ -182,6 +182,7 @@ def load_runs(out_dir) -> dict:
             "k": summary.get("k"), "summary": summary, "violations": violations,
             "chars": chars,
             "cost": (data.get("cost") or {}).get("currency_cost", 0.0),
+            "billing": summary.get("billing") or "per_token",
         }
     return runs
 
@@ -212,6 +213,7 @@ def build_table(runs: dict, expected_chapters: int = None) -> list:
             "chapters_done": done, "expected_chapters": expected_chapters,
             "run_id": run_id, "model": r["model"], "tier": tier, "k": r["k"],
             "chars": r["chars"], "cost": round(r["cost"], 5),
+            "billing": r.get("billing", "per_token"),
             "violations_abs": s["violations_abs"],
             "violations_per_10k": s["violations_per_10k"],
             "core_abs": (None if incomplete else s["core_abs"]),
@@ -243,6 +245,8 @@ def aggregate_by_model(runs: dict) -> list:
     out = []
     for model, tiers in sorted(by_model.items()):
         core_rates, costs, per_tier, total_rates = {}, [], {}, {}
+        billings = {r.get("billing", "per_token")
+                    for rs in tiers.values() for r in rs}
         for tier, rs in tiers.items():
             cores, totals = [], []
             for r in rs:
@@ -264,9 +268,19 @@ def aggregate_by_model(runs: dict) -> list:
             "total_rate_by_tier": total_rates,
             "attribution": att,
             "gate_paired": gate,
+            "billing": billings.pop() if len(billings) == 1 else "mixed",
             "avg_cost_per_run": round(sum(costs) / max(1, len(costs)), 5),
         })
     return out
+
+
+def _cost_cell(cost, billing: str) -> str:
+    """订阅通道的成本列不能显示 $0——那会被读成「免费」，而不是「边际成本为 0」。
+
+    订阅制跑批的可比量是 **token 用量**（manifest 里照常记录），不是美元。
+    混合通道的汇总表里也按同一口径标注，避免拿订阅行去和按量行的钱数比。
+    """
+    return "订阅" if billing == "subscription" else f"{cost}"
 
 
 def render_markdown(rows: list, agg: list) -> str:
@@ -276,28 +290,31 @@ def render_markdown(rows: list, agg: list) -> str:
              "> 密度可被加字稀释（详见 writeup §8），所以绝对数一并给出。", "",
              "> **解读警示**：k=1 时档位间的差值混着采样噪声（同一 prompt 两次运行",
              "> 本就会抖动），此时只能看方向、不能当精确归因；要谈归因需 k≥3。",
-             "> 重判免费（`--rejudge` 不调 LLM），重生成才花钱。", "",
+             "> 重判免费（`--rejudge` 不调 LLM），重生成才花钱。",
+             "> **成本口径**：`订阅` = 走订阅额度，边际成本为 0，该通道的可比量是",
+             "> token 用量而非美元；不可与按量计费通道的钱数直接比较。", "",
              "## 每次运行", "",
              "| run | 模型 | 档位 | k | 字数 | 总违反 | 核心违反 | 核心/万字 | 篇幅 | 文体 | 视角 | 状态 | 修前→修后 | 成本$ |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         fixed = (f"{r['pre_fix_abs']}→{r['post_fix_abs']}"
                  if r["post_fix_abs"] is not None else "—")
+        cost = _cost_cell(r["cost"], r.get("billing", "per_token"))
         if r["incomplete"]:
             lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
-                         f"**未完成** | — | — | — | — | — | — | — | — | {r['cost']} |")
+                         f"**未完成** | — | — | — | — | — | — | — | — | {cost} |")
             continue
         if r.get("partial"):
             lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
                          f"{r['chars']} | {r['violations_abs']} | {r['core_abs']} | "
                          f"{r['core_per_10k']} | {r['length_abs']} | {r['style_abs']} | "
-                         f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {r['cost']} | "
+                         f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {cost} | "
                          f"⚠ 部分 {r['chapters_done']}/{r['expected_chapters']} 章 |")
             continue
         lines.append(f"| {r['run_id']} | {r['model']} | {r['tier']} | {r['k']} | "
                      f"{r['chars']} | {r['violations_abs']} | {r['core_abs']} | "
                      f"{r['core_per_10k']} | {r['length_abs']} | {r['style_abs']} | "
-                     f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {r['cost']} |")
+                     f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {cost} |")
     for r in rows:
         if r.get("partial"):
             lines.append("")
@@ -313,7 +330,8 @@ def render_markdown(rows: list, agg: list) -> str:
         d = a["attribution"]
         lines.append(f"| {a['model']} | {t.get('bare','—')} | {t.get('mid','—')} | "
                      f"{t.get('full','—')} | {d.get('context_engineering','—')} | "
-                     f"{d.get('total','—')} | {a['avg_cost_per_run']} |")
+                     f"{d.get('total','—')} | "
+                     f"{_cost_cell(a['avg_cost_per_run'], a.get('billing','per_token'))} |")
     lines += ["", "## 门禁贡献（配对测量：同一次 full 运行内 修前核心 → 修后核心）", "",
               "| 模型 | full 运行数 | 修前核心 | 修后核心 | 擦除 |",
               "|---|---|---|---|---|"]

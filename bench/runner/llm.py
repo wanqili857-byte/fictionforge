@@ -14,11 +14,45 @@ from bench.runner.models import ModelSpec
 _BASE_URLS = {
     "openrouter": "https://openrouter.ai/api/v1/chat/completions",
     "deepseek": "https://api.deepseek.com/chat/completions",
+    # 火山方舟 coding plan（OpenAI 兼容端点）。注意路径是 /api/coding/v3，
+    # 不是 /api/v3——后者不认 coding plan 的订阅模型（返回 NotFound）。
+    "ark": "https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions",
 }
 _KEY_NAMES = {
     "openrouter": "OPENROUTER_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
+    "ark": "ARK_API_KEY",
 }
+
+# 代理策略：**必须显式写**，不能靠环境默认。
+# requests 的 trust_env 默认会继承 macOS 系统代理，把国内域名也一起劫走——
+# 本机实测：方舟经系统代理 127.0.0.1:7897 握手直接 EOF（而 curl 不读系统代理，所以 curl 能通，
+# 于是这个坑只在「代码里跑」时出现，最容易误判成 TLS 版本问题）。
+# 换机器复现时用 LCB_PROXY 覆盖（direct 或一个 http://host:port）。
+_PROXY_POLICY = {
+    "ark": "direct",        # 国内直连
+    "deepseek": "direct",   # 国内直连
+    "openrouter": "system", # 需要代理出海
+}
+
+
+def resolve_proxy(provider: str, env: Optional[dict] = None) -> dict:
+    """纯函数：算出该通道的代理配置 → {trust_env, proxies, source}。
+
+    LCB_PROXY 优先级最高：
+    - `LCB_PROXY=direct`        全部直连
+    - `LCB_PROXY=http://h:p`    全部走该代理
+    """
+    env = os.environ if env is None else env
+    override = (env.get("LCB_PROXY") or "").strip()
+    if override:
+        if override.lower() == "direct":
+            return {"trust_env": False, "proxies": None, "source": "LCB_PROXY=direct"}
+        return {"trust_env": False, "proxies": {"http": override, "https": override},
+                "source": "LCB_PROXY"}
+    if _PROXY_POLICY.get(provider, "system") == "direct":
+        return {"trust_env": False, "proxies": None, "source": "policy:direct"}
+    return {"trust_env": True, "proxies": None, "source": "policy:system"}
 
 
 def load_keys(env_path: Optional[str] = None) -> dict:
@@ -86,22 +120,27 @@ def call_model(spec: ModelSpec, system: str, user: str,
     if not url:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"未知 provider: {spec.provider}", "cost": 0.0}
+    px = resolve_proxy(spec.provider)
     try:
-        r = requests.post(url, timeout=timeout,
-                          headers={"Content-Type": "application/json",
-                                   "Authorization": f"Bearer {key}"},
-                          json=build_request_body(spec, system, user))
+        sess = requests.Session()
+        sess.trust_env = px["trust_env"]      # 关掉系统代理继承（国内通道必关）
+        r = sess.post(url, timeout=timeout, proxies=px["proxies"],
+                      headers={"Content-Type": "application/json",
+                               "Authorization": f"Bearer {key}"},
+                      json=build_request_body(spec, system, user))
     except Exception as e:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"{type(e).__name__}: {e}", "cost": 0.0}
 
     if r.status_code != 200:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                "error": f"HTTP {r.status_code}: {r.text[:200]}", "cost": 0.0}
+                "error": f"HTTP {r.status_code}: {r.text[:200]}", "cost": 0.0,
+                "proxy": px["source"]}
     try:
         out = parse_response(r.json())
     except Exception as e:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                "error": f"响应解析失败: {e}", "cost": 0.0}
+                "error": f"响应解析失败: {e}", "cost": 0.0, "proxy": px["source"]}
     out["cost"] = spec.cost(out["tokens_in"], out["tokens_out"])
+    out["proxy"] = px["source"]
     return out

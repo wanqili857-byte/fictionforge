@@ -5,8 +5,16 @@
 理由是**可复现**：跑批当时的价格与今日价格可能不同，静态快照让历史结果可追溯。
 改价请更新 `PRICES_FETCHED` 并重跑对照。
 
-provider "openrouter" 走 https://openrouter.ai/api/v1（一个 key 多模型）；
-provider "deepseek" 直连 https://api.deepseek.com（备用通道）。
+provider 通道：
+- "openrouter"  https://openrouter.ai/api/v1（一个 key 多模型）
+- "deepseek"    直连 https://api.deepseek.com（备用通道）
+- "ark"         火山方舟（Ark）coding plan，OpenAI 兼容端点
+                https://ark.cn-beijing.volces.com/api/coding/v3
+
+**计费口径（重要）**：`billing="per_token"` 时 `cost()` 是真实美元支出；
+`billing="subscription"` 时模型走订阅额度，**边际成本为 0**，
+此时 price_in/price_out 仅为 0 占位，成本列不可与按量计费通道直接比较——
+订阅通道的可比量是 token 用量（manifest 里照常记录）。
 """
 
 from dataclasses import dataclass
@@ -18,21 +26,45 @@ PRICES_SOURCE = "https://openrouter.ai/api/v1/models"
 @dataclass(frozen=True)
 class ModelSpec:
     alias: str          # 基准内短名（结果表用）
-    provider: str       # "openrouter" | "deepseek"
+    provider: str       # "openrouter" | "deepseek" | "ark"
     model: str          # 供应商侧模型 id
     family: str         # 家族（判断 judge 是否与被评模型同族）
     price_in: float     # 美元 / 百万 input token
     price_out: float    # 美元 / 百万 output token
     max_tokens: int = 4096
     temperature: float = 0.85
+    billing: str = "per_token"   # "per_token"（按量）| "subscription"（订阅）
 
     def cost(self, tokens_in: int, tokens_out: int) -> float:
-        """一次调用的美元成本。"""
+        """一次调用的美元成本（订阅通道恒为 0，边际成本）。"""
+        if self.billing == "subscription":
+            return 0.0
         return (tokens_in * self.price_in + tokens_out * self.price_out) / 1_000_000.0
+
+
+# 通道状态：跑批前先看这里。**不要**到跑批中途才发现额度墙——
+# 首轮实测就是这么丢掉 kimi 的（6 章跑到第 3 章撞 402，留下一个「部分完成」的废行）。
+CHANNELS = {
+    "openrouter": {
+        "available": False,
+        "note": "额度耗尽（402），2026-09-26 起停用；历史结果仍有效（manifest 记了当时通道）",
+    },
+    "deepseek": {"available": True, "note": "直连，备用通道"},
+    "ark": {
+        "available": True,
+        "note": "火山方舟 coding plan（订阅制，边际成本 0）。"
+                "注意：本账号无 Kimi 通道——kimi-k2.x 在方舟上返回 UnsupportedModel",
+    },
+}
+
+
+def channel_status(provider: str) -> dict:
+    return CHANNELS.get(provider, {"available": False, "note": "未知通道"})
 
 
 # 目录：跨家族、跨价位（约 50× 价差），全部中文可用
 CATALOG = {
+    # ── OpenRouter 通道（已停用，保留别名以记录历史 roster）──────────
     "qwen-flash": ModelSpec("qwen-flash", "openrouter", "qwen/qwen3.7-flash",
                             "qwen", 0.03, 0.13),
     "glm-flash": ModelSpec("glm-flash", "openrouter", "z-ai/glm-5.3-flash",
@@ -46,6 +78,40 @@ CATALOG = {
                       "moonshot", 0.95, 4.00),
     "qwen-max": ModelSpec("qwen-max", "openrouter", "qwen/qwen3.7-max",
                           "qwen", 1.48, 4.42),
+
+    # ── 火山方舟 coding plan 通道（订阅制，2026-09-26 逐个实测可用）────
+    # 实测不可用（UnsupportedModel）：glm-4-7、qwen3-*、qwen2-5-*、
+    # doubao-seed-1-6/1-8、doubao-seed-2-0-lite。别照抄方舟全量模型表。
+    # max_tokens 给大：方舟的思考型模型把 reasoning token 也算进 completion
+    # （实测 doubao-seed-2-1-pro 写 867 字烧掉 1139 个 reasoning token），
+    # 给小了正文会被截断。
+    "ark-db-pro": ModelSpec("ark-db-pro", "ark", "doubao-seed-2-1-pro-260915",
+                            "doubao", 0.0, 0.0, max_tokens=8192,
+                            billing="subscription"),
+    "ark-db-turbo": ModelSpec("ark-db-turbo", "ark", "doubao-seed-2-1-turbo-260628",
+                              "doubao", 0.0, 0.0, max_tokens=8192,
+                              billing="subscription"),
+    "ark-db-lite": ModelSpec("ark-db-lite", "ark", "doubao-seed-2-1-lite-260915",
+                             "doubao", 0.0, 0.0, max_tokens=8192,
+                             billing="subscription"),
+    "ark-db-mini": ModelSpec("ark-db-mini", "ark", "doubao-seed-2-0-mini-260428",
+                             "doubao", 0.0, 0.0, max_tokens=8192,
+                             billing="subscription"),
+    "ark-db-code": ModelSpec("ark-db-code", "ark", "doubao-seed-2-0-code-preview-260215",
+                             "doubao", 0.0, 0.0, max_tokens=8192,
+                             billing="subscription"),
+    "ark-glm-flash": ModelSpec("ark-glm-flash", "ark", "glm-5-3-flash-260828",
+                               "glm", 0.0, 0.0, max_tokens=8192,
+                               billing="subscription"),
+    "ark-glm": ModelSpec("ark-glm", "ark", "glm-5-2-260617",
+                         "glm", 0.0, 0.0, max_tokens=8192,
+                         billing="subscription"),
+    "ark-ds-flash": ModelSpec("ark-ds-flash", "ark", "deepseek-v4-1-flash-260910",
+                              "deepseek", 0.0, 0.0, max_tokens=8192,
+                              billing="subscription"),
+    "ark-ds-pro": ModelSpec("ark-ds-pro", "ark", "deepseek-v4-pro-ga-260813",
+                            "deepseek", 0.0, 0.0, max_tokens=8192,
+                            billing="subscription"),
 }
 
 

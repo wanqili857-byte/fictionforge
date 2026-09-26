@@ -93,6 +93,7 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
     tokens_in = tokens_out = 0
     cost = 0.0
     errors = []
+    proxy_sources = set()
 
     # 逐章用量账本（断点续跑的关键）：每章落一行，续跑时先读回，
     # 否则被跳过章节的 token/成本就永久丢失（跑完才写 run.json 的话）
@@ -110,6 +111,7 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
         rec = {"chapter": ch, "tokens_in": res.get("tokens_in", 0),
                "tokens_out": res.get("tokens_out", 0),
                "cost": res.get("cost", 0.0),
+               "proxy": res.get("proxy", ""),
                "prompt_hash": prompt_hashes.get(str(ch), "")}
         with open(usage_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -126,6 +128,8 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
                 cost += prev.get("cost", 0.0)
                 if prev.get("prompt_hash"):
                     prompt_hashes[str(ch)] = prev["prompt_hash"]
+                if prev.get("proxy"):
+                    proxy_sources.add(prev["proxy"])
             log(f"  [resume] {run_id} ch{ch}")
         else:
             system, user = build_prompt(tier, u, spec, prior_text=prior_text,
@@ -135,6 +139,8 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
             tokens_in += res.get("tokens_in", 0)
             tokens_out += res.get("tokens_out", 0)
             cost += res.get("cost", 0.0)
+            if res.get("proxy"):
+                proxy_sources.add(res["proxy"])
             _record_usage(ch, res)
             if res.get("error"):
                 errors.append({"chapter": ch, "error": res["error"]})
@@ -161,8 +167,10 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
 
     summary = {
         "run_id": run_id, "model": model_spec.alias, "tier": tier, "k": k_index,
+        "provider": model_spec.provider, "billing": model_spec.billing,
         "chapters_done": len(chapter_paths), "tokens_in": tokens_in,
         "tokens_out": tokens_out, "cost": round(cost, 6), "errors": errors,
+        "proxy": ",".join(sorted(proxy_sources)),
         "violations_pre_fix": len(violations["pre_fix"]),
         "violations_post_fix": len(violations["post_fix"]) if tier == "full" else None,
     }
@@ -180,7 +188,8 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
         generated_at=datetime.now(timezone.utc).isoformat(),
         cost={"tokens_in": tokens_in, "tokens_out": tokens_out,
               "currency_cost": round(cost, 6)},
-        chapter_paths=chapter_paths, notes="",
+        chapter_paths=chapter_paths,
+        notes=f"billing={model_spec.billing}; proxy={','.join(sorted(proxy_sources)) or 'n/a'}",
     )
     data = manifest.to_dict()
     data["_summary"] = summary
@@ -201,6 +210,19 @@ def run_batch(u, model_aliases, tiers=("bare", "mid", "full"), k=1, out_dir="run
     """跑完整矩阵。generate_fn/judge_fn 缺省用真实实现。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    if generate_fn is None:
+        # 真调用前先查通道：额度墙要在跑批**之前**撞，不能跑到一半才撞
+        # （首轮就是这么丢掉 kimi 的，留下一个不可比的「部分完成」废行）
+        specs = [model_catalog.get(a) for a in model_aliases]
+        dead = [(s.alias, s.provider) for s in specs
+                if not model_catalog.channel_status(s.provider)["available"]]
+        if dead:
+            detail = "\n".join(
+                f"  - {a}（通道 {p}）: {model_catalog.channel_status(p)['note']}"
+                for a, p in dead)
+            raise RuntimeError(f"以下模型所在通道不可用，已中止（未消耗任何 token）:\n{detail}")
+        log(f"[channels] " + ", ".join(
+            f"{s.alias}→{s.provider}({s.billing})" for s in specs))
     generate_fn = generate_fn or call_model
     league = build_ledger(u.title, u.specs, [c["name"] for c in u.cast],
                           protagonist=u.protagonist)
@@ -224,19 +246,35 @@ def run_batch(u, model_aliases, tiers=("bare", "mid", "full"), k=1, out_dir="run
 
 def main():
     ap = argparse.ArgumentParser(description="LCB 跑批")
-    ap.add_argument("--seed", type=int, required=True)
+    ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--chapters", type=int, default=6)
-    ap.add_argument("--models", default="ds-flash,glm-flash")
+    ap.add_argument("--models", default="ark-db-lite,ark-glm-flash,ark-ds-flash")
     ap.add_argument("--tiers", default="bare,mid,full")
     ap.add_argument("--k", type=int, default=1)
     ap.add_argument("--out", default="runs/first")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--list-models", action="store_true",
+                    help="列出模型目录与通道状态后退出（不跑批）")
     ap.add_argument("--rejudge", action="store_true",
                     help="不重新生成，只用当前判定器重判已有正文（零 LLM 调用）")
     args = ap.parse_args()
 
+    if args.list_models:
+        for alias, s in sorted(model_catalog.CATALOG.items()):
+            st = model_catalog.channel_status(s.provider)
+            mark = "✅" if st["available"] else "⛔"
+            print(f"{mark} {alias:14} {s.provider:11} {s.model:34} "
+                  f"{s.family:9} {s.billing}")
+        print("\n通道:")
+        for name, st in sorted(model_catalog.CHANNELS.items()):
+            print(f"  {'✅' if st['available'] else '⛔'} {name}: {st['note']}")
+        return 0
+
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from bench.universe.generator import generate
+
+    if args.seed is None:
+        ap.error("--seed 必填（生成宇宙用；只看模型目录用 --list-models）")
 
     u = generate(seed=args.seed, chapters=args.chapters)
     res = run_batch(u, args.models.split(","), tuple(args.tiers.split(",")),

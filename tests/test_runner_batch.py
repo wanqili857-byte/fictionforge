@@ -77,6 +77,87 @@ def test_load_keys():
     check("缺文件返回空", llm.load_keys("/tmp/绝对不存在-.env") == {})
 
 
+# ── 通道装配（方舟 coding plan）────────────────────────────────────────
+
+def test_proxy_policy():
+    """国内通道必须直连：requests 默认继承 macOS 系统代理，会把国内域名一起劫走
+    （本机实测方舟经 127.0.0.1:7897 握手 EOF）。这条不能靠环境默认。"""
+    check("方舟直连", llm.resolve_proxy("ark", {})["trust_env"] is False)
+    check("DeepSeek 直连", llm.resolve_proxy("deepseek", {})["trust_env"] is False)
+    check("OpenRouter 走系统代理", llm.resolve_proxy("openrouter", {})["trust_env"] is True)
+    check("未知通道默认系统代理", llm.resolve_proxy("mystery", {})["trust_env"] is True)
+
+    d = llm.resolve_proxy("ark", {"LCB_PROXY": "direct"})
+    check("LCB_PROXY=direct 覆盖为直连", d["trust_env"] is False and d["proxies"] is None)
+    o = llm.resolve_proxy("ark", {"LCB_PROXY": "http://127.0.0.1:9999"})
+    check("LCB_PROXY 覆盖为显式代理",
+          o["trust_env"] is False and o["proxies"]["https"] == "http://127.0.0.1:9999")
+    check("LCB_PROXY 空串视为未设置",
+          llm.resolve_proxy("ark", {"LCB_PROXY": "  "})["source"] == "policy:direct")
+
+
+def test_ark_provider_wiring():
+    """方舟 coding plan：端点路径、key 名、目录条目。路径错一个字符就全盘 404。"""
+    check("方舟端点走 /api/coding/v3",
+          llm._BASE_URLS["ark"].endswith("/api/coding/v3/chat/completions"))
+    check("方舟 key 名 ARK_API_KEY", llm._KEY_NAMES["ark"] == "ARK_API_KEY")
+    d = Path(tempfile.mkdtemp()) / ".env"
+    d.write_text("ARK_API_KEY=ark-test\nDEEPSEEK_API_KEY=sk-ds\n", encoding="utf-8")
+    check("ARK_API_KEY 能被读出", llm.load_keys(str(d)).get("ARK_API_KEY") == "ark-test")
+
+    ark = {a: s for a, s in models.CATALOG.items() if s.provider == "ark"}
+    check("方舟目录非空", len(ark) >= 6)
+    check("方舟条目全为订阅制",
+          all(s.billing == "subscription" for s in ark.values()))
+    check("方舟条目的 model id 非空且无空格",
+          all(s.model and " " not in s.model for s in ark.values()))
+    check("方舟覆盖三个家族",
+          {s.family for s in ark.values()} >= {"doubao", "glm", "deepseek"})
+    check("思考型模型给足 max_tokens（推理 token 占 completion）",
+          all(s.max_tokens >= 4096 for s in ark.values()))
+    check("别名与 model id 不重名", len({s.model for s in ark.values()}) == len(ark))
+
+
+def test_subscription_billing_is_zero_not_fake_price():
+    """订阅通道边际成本 = 0，且不能靠 price 字段伪装成按量计费。"""
+    s = models.get("ark-db-lite")
+    check("订阅模型成本恒为 0", s.cost(100000, 100000) == 0.0)
+    check("按量模型照常计价", models.get("ds-flash").cost(1_000_000, 0) == 0.05)
+
+
+def test_channel_gate_fails_fast():
+    """通道不可用要在跑批前中止（首轮就是跑到一半撞 402，留下废行）。"""
+    u = generate(seed=7, chapters=2)
+    out = Path(tempfile.mkdtemp())
+    raised = None
+    try:
+        run_batch(u, ["kimi"], tiers=("bare",), k=1, out_dir=out,
+                  generate_fn=None, log=lambda *_: None)
+    except RuntimeError as e:
+        raised = str(e)
+    check("停用通道真调用前中止", raised is not None and "通道不可用" in raised)
+    check("中止信息点名通道与原因", raised and "openrouter" in raised)
+    check("中止时不产生任何运行目录",
+          not any(p.is_dir() for p in out.iterdir()))
+    # 注入假生成器 = 不触网 → 通道状态与编排无关，不该被拦
+    res = run_batch(u, ["kimi"], tiers=("bare",), k=1, out_dir=Path(tempfile.mkdtemp()),
+                    generate_fn=FakeGen(), judge_fn=fake_judge, log=lambda *_: None)
+    check("注入假生成器时不查通道", len(res["runs"]) == 1)
+
+
+def test_summary_records_billing():
+    u = generate(seed=7, chapters=2)
+    out = Path(tempfile.mkdtemp())
+    res = run_batch(u, ["ark-db-lite"], tiers=("bare",), k=1, out_dir=out,
+                    generate_fn=FakeGen(), judge_fn=fake_judge, log=lambda *_: None)
+    s = res["runs"][0]
+    check("summary 记 provider", s["provider"] == "ark")
+    check("summary 记 billing", s["billing"] == "subscription")
+    check("订阅通道成本为 0", s["cost"] == 0.0)
+    man = json.loads((out / "ark-db-lite__bare__k0" / "run.json").read_text(encoding="utf-8"))
+    check("manifest 也带订阅口径", man["_summary"]["billing"] == "subscription")
+
+
 # ── 跑批编排（注入假件）───────────────────────────────────────────────
 
 class FakeGen:
@@ -233,6 +314,11 @@ if __name__ == "__main__":
     test_request_body()
     test_parse_response()
     test_load_keys()
+    test_proxy_policy()
+    test_ark_provider_wiring()
+    test_subscription_billing_is_zero_not_fake_price()
+    test_channel_gate_fails_fast()
+    test_summary_records_billing()
     test_matrix_and_layout()
     test_resume_skips_generation_and_keeps_cost()
     test_full_tier_pre_post_and_fix()

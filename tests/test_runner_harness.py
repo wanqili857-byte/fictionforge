@@ -50,12 +50,21 @@ def test_models_catalog():
         if alias != m.alias or not m.provider or not m.model or not m.family:
             ok = False
             print(f"      · {alias} 字段不完整")
-        if m.price_in <= 0 or m.price_out <= 0:
+        # 价格口径随计费方式走：按量通道必须有正价（否则成本会静默算成 0），
+        # 订阅通道必须是 0（否则会伪造出一个不存在的美元支出）
+        if m.billing == "per_token" and (m.price_in <= 0 or m.price_out <= 0):
             ok = False
-            print(f"      · {alias} 价格应为正")
+            print(f"      · {alias} 按量通道价格应为正")
+        if m.billing == "subscription" and (m.price_in or m.price_out
+                                            or m.cost(10**6, 10**6) != 0.0):
+            ok = False
+            print(f"      · {alias} 订阅通道价格应为 0 且成本恒为 0")
+        if m.billing not in ("per_token", "subscription"):
+            ok = False
+            print(f"      · {alias} 未知计费方式 {m.billing}")
         if m.max_tokens <= 0 or not (0 <= m.temperature <= 2):
             ok = False
-    check("每个 ModelSpec 字段完整且价格为正", ok)
+    check("每个 ModelSpec 字段完整且价格口径与计费方式一致", ok)
     check("跨家族 ≥3", len({m.family for m in models.CATALOG.values()}) >= 3)
     check("价格快照带日期", bool(models.PRICES_FETCHED))
     try:
