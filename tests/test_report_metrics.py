@@ -33,9 +33,9 @@ def check(name, cond):
         print(f"  FAIL: {name}")
 
 
-def vio(t, chapter=1, word="忽然"):
-    return {"probe_id": f"x-ch{chapter}", "type": t, "detector": "mechanical",
-            "chapter": chapter, "severity": "high",
+def vio(t, chapter=1, word="忽然", probe=None):
+    return {"probe_id": probe or f"cons-forbidden-ch{chapter}", "type": t,
+            "detector": "mechanical", "chapter": chapter, "severity": "high",
             "evidence": {"word": word}, "run_id": "r", "confidence": 1.0}
 
 
@@ -49,6 +49,26 @@ def test_rate_and_summary():
     s = M.summarize_run([vio("constraint"), vio("state"), vio("constraint")], 2000)
     check("绝对值与密度成对", s["violations_abs"] == 3 and s["violations_per_10k"] == 15.0)
     check("按类型计数", s["by_type"] == {"constraint": 2, "state": 1})
+
+
+def test_family_split():
+    """聚合数字会把叙事一致性与篇幅合规混在一起——必须分族、并给出剔篇幅的核心数。"""
+    check("篇幅族", M.family_of("cons-length-ch1") == "length")
+    check("文体族", M.family_of("cons-forbidden-ch1") == "style"
+          and M.family_of("cons-para-ch2") == "style")
+    check("视角族", M.family_of("cons-pov-ch1") == "pov"
+          and M.family_of("cons-pronoun-adj-ch3") == "pov")
+    check("状态族（前缀）", M.family_of("state-dead-ch3") == "state")
+    check("未知归 other", M.family_of("weird-ch1") == "other")
+
+    vs = [vio("constraint", probe="cons-length-ch1"),
+          vio("constraint", probe="cons-length-ch2"),
+          vio("constraint", probe="cons-forbidden-ch3"),
+          vio("state", probe="state-dead-ch3")]
+    s = M.summarize_run(vs, 1000)
+    check("分族计数", s["by_family"] == {"length": 2, "style": 1, "state": 1})
+    check("核心数剔除篇幅", s["core_abs"] == 2)
+    check("核心密度按字数", s["core_per_10k"] == 20.0)
 
 
 def test_pass_k():
@@ -109,16 +129,16 @@ def test_build_table_and_full_uses_post():
 def test_aggregate_by_model():
     agg = {a["model"]: a for a in M.aggregate_by_model(_runs_fixture())}
     m1 = agg["m1"]
-    check("按档位平均", m1["rate_by_tier"] == {"bare": 100.0, "mid": 40.0, "full": 0.0})
+    check("按档位平均（核心率）", m1["core_rate_by_tier"] == {"bare": 100.0, "mid": 40.0, "full": 0.0})
     check("归因随汇总给出", m1["attribution"]["total"] == 100.0)
     check("平均成本", m1["avg_cost_per_run"] == 0.01)
-    check("单档位模型也可汇总", agg["m2"]["rate_by_tier"] == {"bare": 10.0})
+    check("单档位模型也可汇总", agg["m2"]["core_rate_by_tier"] == {"bare": 10.0})
 
 
 def test_render_markdown():
     runs = _runs_fixture()
     md = M.render_markdown(M.build_table(runs), M.aggregate_by_model(runs))
-    check("含每次运行表头", "违反/万字" in md and "修前→修后" in md)
+    check("含每次运行表头", "核心/万字" in md and "修前→修后" in md and "篇幅" in md)
     check("含汇总表头", "上下文工程" in md and "门禁" in md)
     check("含数据行", "m1__bare__k0" in md and "m1" in md)
     check("以换行结尾", md.endswith("\n"))
@@ -152,6 +172,7 @@ def test_load_runs():
 
 if __name__ == "__main__":
     test_rate_and_summary()
+    test_family_split()
     test_pass_k()
     test_bootstrap_ci()
     test_attribution()
