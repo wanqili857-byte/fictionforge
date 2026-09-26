@@ -75,6 +75,24 @@
 
 ---
 
+## 你改的每个字,框架都记得(v0.3.0 修订感知管线)
+
+AI 写的稿子你总要改。问题是:**改完之后,那些修改去哪了?**
+
+多数工具里,它们蒸发了——下次生成,模型照样犯同样的毛病。
+
+FictionForge 把「人工修订」做成了一等公民:
+
+- 📝 **canon / drafts 分家** —— AI 只写草稿(`chapters/drafts/`),你改完的定稿才是 canon。生成管线**永不覆盖**你改过的字。
+- 🔁 **修订即资产** —— `promote.py` 自动 diff「你的定稿 vs AI 原稿」,逐条标注修订原因(AI味/节奏/素材/逻辑),存进修订记录。
+- 📈 **越用越懂你** —— 修订记录蒸馏成素材库(只存人改后的好句,配额新进旧出),注入后续生成。库越准,prompt 不膨胀。
+- ✂️ **局部重生成** —— `--resection <节id>`:只重写你不满意的那一节,其余节字节级保留。
+- 🧭 **情节差异回流** —— 你推翻的情节写进「漂移注记」,下一章生成以此为准,不再继承已被你否掉的旧设定。
+
+> 你改的每个字,都是下一章的教材。
+
+---
+
 ## 快速上手 · 三条命令开写
 
 ```bash
@@ -117,6 +135,7 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 - ✅ 引擎全链跑通(tick → spec → 正文)
 - ✅ 框架/内容包解耦——换小说不动引擎
+- ✅ **v0.3.0 修订感知管线**——canon/drafts 分家、修订回灌(素材库)、局部重生成、情节差异回流
 - 🚧 文档、适配示例、示例小说 Tier1 agent,持续完善中
 
 ---
@@ -128,6 +147,8 @@ FictionForge is a **multi-agent novel-writing framework**. Character agents each
 Framework and novels are fully decoupled: `framework/` is generic, `novels/<yours>/` is a swappable content package, and `novel_config.json` is the only door between them. See `novels/静默轨道/` for a working sci-fi example.
 
 Under the hood it's built for the long haul: **unified context** (every chapter gets the same authoritative settings, no drift), **consistent characters** (each character is an agent with persisted memory/beliefs), and **persona persistence** (agent state survives across chapters — write 300k words and the protagonist is still the same person).
+
+**v0.3.0 — revision-aware pipeline.** AI writes drafts into `chapters/drafts/`; your edited version is promoted to canon and the generation pipeline never overwrites it. `promote.py` diffs your edits against the AI original and labels each change (AI-flavor / rhythm / material / logic); those labels distill into an example library that feeds later chapters. Section-level regeneration (`--resection`) rewrites one section and leaves the rest byte-identical.
 
 **Quick start:** `pip install requests` → put an `OPENROUTER_API_KEY` or `DEEPSEEK_API_KEY` in `~/.env` → `python3 server/gen_proxy.py` → `python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json` (`--force` because chapter 1 already ships with the repo — see the Chinese section above). Unit tests (no LLM, no I/O): `python3 tests/test_split_scenes.py` + `python3 tests/test_engine_core.py`.
 
