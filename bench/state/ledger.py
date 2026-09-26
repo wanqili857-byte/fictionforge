@@ -25,7 +25,7 @@ _PAREN_RE = re.compile(r"[（(].*?[)）]")
 
 
 def base_name(name: str) -> str:
-    """匹配用基名：去掉括号限定（"明处朋友（名待定）" → "明处朋友"）。"""
+    """匹配用基名：去掉括号限定（"熟人（名待定）" → "熟人"）。"""
     return _PAREN_RE.sub("", name).strip()
 
 
@@ -172,7 +172,7 @@ class StateLedger:
 # ── 构建 ──────────────────────────────────────────────────────────────
 
 def _characters_in(text: str, cast_names: list) -> list:
-    """最长基名优先掩码匹配，避免 "林汐" 在 "林汐的朋友" 中被重复计。"""
+    """最长基名优先掩码匹配，避免 "江晚" 在 "江晚的朋友" 中被重复计。"""
     masked = text
     found = []
     for name in sorted(cast_names, key=lambda n: -len(base_name(n))):

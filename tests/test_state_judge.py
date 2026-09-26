@@ -48,9 +48,9 @@ def spec(chapter, anchors, delta=None, desc=""):
 
 def ledger_with_death():
     return build_ledger("T", [
-        spec(1, ["第1天上午 @A"], desc="林汐蹲下。老赵递水。"),
-        spec(2, ["第2天上午 @B"], delta={"deaths": ["老赵"]}),
-    ], cast_names=["林汐", "老赵"], protagonist="林汐")
+        spec(1, ["第1天上午 @A"], desc="江晚蹲下。老周递水。"),
+        spec(2, ["第2天上午 @B"], delta={"deaths": ["老周"]}),
+    ], cast_names=["江晚", "老周"], protagonist="江晚")
 
 
 def sig(vs):
@@ -61,28 +61,28 @@ def sig(vs):
 
 def test_dead_resurrection():
     led = ledger_with_death()
-    # 命中：老赵在第3章正文里正常活动
-    vs = state_judge("老赵把水递过来，手指关节发白。", led, chapter=3, run_id="r1")
+    # 命中：老周在第3章正文里正常活动
+    vs = state_judge("老周把水递过来，手指关节发白。", led, chapter=3, run_id="r1")
     dead = [v for v in vs if "dead" in v.probe_id]
     check("死人复活命中 1 条", len(dead) == 1 and dead[0].severity == Severity.HIGH)
-    check("复活证据含角色名", "老赵" in dead[0].evidence.get("span", ""))
+    check("复活证据含角色名", "老周" in dead[0].evidence.get("span", ""))
 
     # 过去时豁免
-    for text in ["她想起老赵当年的话。", "老赵的坟就在坡上。",
-                 "她翻出老赵的遗物。", "听说老赵死了。"]:
+    for text in ["她想起老周当年的话。", "老周的坟就在坡上。",
+                 "她翻出老周的遗物。", "听说老周死了。"]:
         vs2 = state_judge(text, led, chapter=3, run_id="r1")
         check(f"豁免不报: {text[:8]}", [v for v in vs2 if "dead" in v.probe_id] == [])
 
     # 对话豁免
-    vs3 = state_judge("“老赵还欠我半袋粮。”", led, chapter=3, run_id="r1")
+    vs3 = state_judge("“老周还欠我半袋粮。”", led, chapter=3, run_id="r1")
     check("对话内豁免", [v for v in vs3 if "dead" in v.probe_id] == [])
 
     # 未死角色不报
-    vs4 = state_judge("林汐把水递过来。", led, chapter=3, run_id="r1")
+    vs4 = state_judge("江晚把水递过来。", led, chapter=3, run_id="r1")
     check("未死角色不报", [v for v in vs4 if "dead" in v.probe_id] == [])
 
     # 死亡当章不报（第2章死的，第2章正文提及不算复活）
-    vs5 = state_judge("老赵倒下。", led, chapter=2, run_id="r1")
+    vs5 = state_judge("老周倒下。", led, chapter=2, run_id="r1")
     check("死亡当章不报", [v for v in vs5 if "dead" in v.probe_id] == [])
 
 
@@ -110,7 +110,7 @@ def test_day_contradiction():
     led = build_ledger("T", [
         spec(1, ["第1天上午 @A"]), spec(2, ["第5天上午 @B"]),
     ], cast_names=[])
-    vs = state_judge("第三天，她回到了残岸。", led, chapter=2, run_id="r1")
+    vs = state_judge("第三天，她回到了河湾。", led, chapter=2, run_id="r1")
     dc = [v for v in vs if "day" in v.probe_id]
     check("正文天数早于锚点 → 报", len(dc) == 1 and dc[0].severity == Severity.MEDIUM)
 
@@ -128,19 +128,19 @@ def test_day_contradiction():
 
 def test_item_conflict():
     led = build_ledger("T", [
-        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "林汐"}}),
-        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老赵"}}),
-    ], cast_names=["林汐", "老赵"])
+        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "江晚"}}),
+        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老周"}}),
+    ], cast_names=["江晚", "老周"])
     vs = state_judge("旧终端在桌上。", led, chapter=2, run_id="r1")
     ic = [v for v in vs if "item" in v.probe_id]
     check("双持有命中", len(ic) == 1 and ic[0].type == ViolationType.STATE)
 
     # 带转移注记 → 豁免（作者声明 transfer）
     led2 = build_ledger("T", [
-        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "林汐"}}),
-        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老赵"},
+        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "江晚"}}),
+        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老周"},
                                         "transfer": ["旧终端"]}),
-    ], cast_names=["林汐", "老赵"])
+    ], cast_names=["江晚", "老周"])
     check("有转移注记豁免",
           [v for v in state_judge("x。", led2, 2, "r1") if "item" in v.probe_id] == [])
 
@@ -150,13 +150,13 @@ def test_item_conflict():
 def test_edges():
     led = ledger_with_death()
     check("空文本不崩不报", state_judge("", led, 3, "r1") == [])
-    vs = state_judge("老赵来了。", led, 3, "r1")
+    vs = state_judge("老周来了。", led, 3, "r1")
     check("类型恒 state", all(v.type == ViolationType.STATE for v in vs))
     check("detector 恒 mechanical",
           all(v.detector == DetectorKind.MECHANICAL for v in vs))
     check("run_id 回填", all(v.run_id == "r1" for v in vs))
-    a = state_judge("老赵来了。", led, 3, "r1")
-    b = state_judge("老赵来了。", led, 3, "r1")
+    a = state_judge("老周来了。", led, 3, "r1")
+    b = state_judge("老周来了。", led, 3, "r1")
     check("确定性", [v.to_dict() for v in a] == [v.to_dict() for v in b])
     check("启发式置信<1", all(v.confidence < 1.0 for v in a))
 

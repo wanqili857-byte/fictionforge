@@ -110,30 +110,30 @@ def test_pov_first_person():
     vs3 = mechanical_judge("“叔，这个我已经捆好啦。”\n“我？”", MechanicalRules(pov="third_limited"), "r1", 1)
     check("弯引号对话豁免", vs3 == [])
     # 弯引号对话内的人称混用同样豁免
-    rules_d = MechanicalRules(protagonist="林汐", protagonist_pronoun="她",
-                              cast_genders={"林汐": "f"})
-    vs4 = mechanical_judge("“林汐，他说走吧。”", rules_d, "r1", 1)
+    rules_d = MechanicalRules(protagonist="江晚", protagonist_pronoun="她",
+                              cast_genders={"江晚": "f"})
+    vs4 = mechanical_judge("“江晚，他说走吧。”", rules_d, "r1", 1)
     check("弯引号内人称豁免", vs4 == [])
 
 
 # ── 人称混用 ──────────────────────────────────────────────────────────
 
 def test_pronoun_switch():
-    rules = MechanicalRules(protagonist="林汐", protagonist_pronoun="她",
-                            cast_genders={"林汐": "f", "张三": "m"})
+    rules = MechanicalRules(protagonist="江晚", protagonist_pronoun="她",
+                            cast_genders={"江晚": "f", "张三": "m"})
     # 同句有男性角色名 → 他 有归属，不报
-    ok1 = "林汐看着张三，他把水递给她。"
+    ok1 = "江晚看着张三，他把水递给她。"
     check("他有归属不报", mechanical_judge(ok1, rules, "r1", 1) == [])
     # 同句无男性角色名 → 他 悬空，报
-    bad = "林汐把剑收了，他说走吧。"
+    bad = "江晚把剑收了，他说走吧。"
     vs = mechanical_judge(bad, rules, "r1", 1)
     check("他悬空报 1 条", len(vs) == 1 and vs[0].severity == Severity.HIGH)
     # 正确人称不报
-    check("她不报", mechanical_judge("林汐把剑收了，她说走吧。", rules, "r1", 1) == [])
+    check("她不报", mechanical_judge("江晚把剑收了，她说走吧。", rules, "r1", 1) == [])
     # 对话内豁免
-    check("对话内豁免", mechanical_judge("「林汐，他说走吧。」", rules, "r1", 1) == [])
+    check("对话内豁免", mechanical_judge("「江晚，他说走吧。」", rules, "r1", 1) == [])
     # 无 cast_genders → 检查跳过
-    rules2 = MechanicalRules(protagonist="林汐", protagonist_pronoun="她")
+    rules2 = MechanicalRules(protagonist="江晚", protagonist_pronoun="她")
     check("无 cast 跳过", mechanical_judge(bad, rules2, "r1", 1) == [])
 
 
