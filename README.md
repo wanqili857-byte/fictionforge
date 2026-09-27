@@ -145,10 +145,13 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 - 🛡️ **抗刷分自测** —— 注水/复制/术语轰炸三攻击 + 重复率判据(实测三个攻击都能刷低密度指标,防线是绝对数成对 + 重复率 + 篇幅门禁)
 - 🔌 **MCP server** —— 五个工具可直接被 agent 调用(手写协议层 + 官方 SDK 双实现)
 
+- 🏆 **榜单与复现协议** —— 静态榜单(bare 档排序/并列同名次) + `docs/BENCH_PROTOCOL.md`:宇宙 sha256 校准、manifest 校验清单、榜单准入规则
+
+**首期跑批结果**(三厂商 × 三档 × 6 章,判定器 m0.2.0,见 `docs/lcb-results-v2.md`):裸写 glm-5.3-flash 最优(2.52 核心违反/万字),deepseek 最吃上下文工程红利,doubao 被 harness 拉到修后 0;**glm 家族对上下文注入负贡献,跨两期跑批复现**。
+
 **设计中(见 `docs/BENCH_PLAN.md`)**
 
 - 🧠 **语义判定** —— 知识边界(谁在第几章知道什么)与上下文腐坏:清单式 LLM 判定 + Kappa 准入门槛
-- 🏆 **榜单与复现协议** —— 让第三方能提交自己的模型
 
 细节见 `bench/mcpserver/README.md`;设计与发现见 `docs/lcb-writeup.md`。
 
@@ -161,7 +164,7 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 - ✅ 引擎全链跑通(tick → spec → 正文)
 - ✅ 框架/内容包解耦——换小说不动引擎
 - ✅ **v0.3.0 修订感知管线**——canon/drafts 分家、修订回灌(素材库)、局部重生成、情节差异回流
-- 🚧 **LCB 长程一致性基准**(本分支)——判定器 / 合成宇宙 / MCP server 已完成;跑批、指标、榜单、抗刷分实验进行中
+- ✅ **LCB 长程一致性基准**(v0.4.0)——判定器/合成宇宙/跑批/指标/抗刷分/榜单/复现协议全链完成;两期受控跑批出数;语义判定(Kappa)进行中
 - 🚧 文档、适配示例、示例小说 Tier1 agent,持续完善中
 
 ---
