@@ -178,7 +178,7 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 | v0.2.0 | 理论心智层:真相表 + 知识 vs 真相 + A/B 反转素材、顶层协调器(gen/engine/hybrid) |
 | v0.1.0 | 引擎全链:TickRunner→角色 agents→Narrator 合成,框架/内容包解耦 |
 
-详细更新内容见 [GitHub Releases](https://github.com/wanqili857-byte/fictionforge/releases);规划见 `docs/VERSION_PLAN.md`。
+详细更新内容见 [CHANGELOG.md](CHANGELOG.md) 与 [GitHub Releases](https://github.com/wanqili857-byte/fictionforge/releases);规划见 `docs/VERSION_PLAN.md`。
 
 ---
 
