@@ -23,3 +23,26 @@ jobs:
         run: python tests/test_theory_of_mind.py
       - name: Unit tests — chapter coordinator
         run: python tests/test_chapter_coordinator.py
+
+      # LCB 基准（判定器/宇宙/跑批/指标/抗刷分/MCP）——全部零 LLM、零网络，
+      # 正是为 CI 设计的。少了这一步，徽章绿不绿跟头牌功能无关。
+      - name: Unit tests — LCB contracts
+        run: python tests/test_contracts.py
+      - name: Unit tests — LCB mechanical judge
+        run: python tests/test_mechanical.py
+      - name: Unit tests — LCB state judge
+        run: python tests/test_state_judge.py
+      - name: Unit tests — LCB state ledger
+        run: python tests/test_ledger.py
+      - name: Unit tests — LCB synthetic universe
+        run: python tests/test_universe.py
+      - name: Unit tests — LCB harness
+        run: python tests/test_runner_harness.py
+      - name: Unit tests — LCB batch runner
+        run: python tests/test_runner_batch.py
+      - name: Unit tests — LCB metrics & report
+        run: python tests/test_report_metrics.py
+      - name: Unit tests — LCB anti-gaming
+        run: python tests/test_attacks.py
+      - name: Unit tests — LCB MCP server (hand-rolled, zero deps)
+        run: python tests/test_mcp_server.py
