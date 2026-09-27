@@ -169,6 +169,19 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 ---
 
+## 版本历史
+
+| 版本 | 内容 |
+|---|---|
+| **v0.4.0** | **LCB 长程一致性基准**:判定器(m0.2.0)/合成宇宙(逐字节可复现)/三档 harness 跑批/指标(密度+绝对数成对、门禁配对)/抗刷分自测/榜单/复现协议/MCP server;两期受控跑批出数([结果](docs/lcb-results-v2.md)) |
+| v0.3.0 | **修订感知管线**:canon/drafts 分家、修订 diff 打标→素材库回灌、`--resection` 局部重生成、情节漂移回流 |
+| v0.2.0 | 理论心智层:真相表 + 知识 vs 真相 + A/B 反转素材、顶层协调器(gen/engine/hybrid) |
+| v0.1.0 | 引擎全链:TickRunner→角色 agents→Narrator 合成,框架/内容包解耦 |
+
+详细更新内容见 [GitHub Releases](https://github.com/wanqili857-byte/fictionforge/releases);规划见 `docs/VERSION_PLAN.md`。
+
+---
+
 ## For English readers
 
 FictionForge is a **multi-agent novel-writing framework**. Character agents each carry memory, beliefs, and a personal view of the world; a narrator synthesizes their event lines into a chapter spec; a generation pipeline writes the prose behind quality gates (banned words, AI-flavor detection, metaphor density, sensory warmth) and auto-rewrites until it passes.
@@ -183,4 +196,4 @@ Under the hood it's built for the long haul: **unified context** (every chapter 
 
 **Bring your own novel:** copy `templates/novel/`, fill `novel_config.json` + `bible/`, write a protagonist agent, done.
 
-**LCB (this branch) — a benchmark for long-horizon consistency.** The same consistency checkers the framework uses for quality gates, extracted into a benchmark: **implemented today** are constraint adherence (banned words, length, POV, pronouns) and state consistency (dead characters walking, teleporting items, time going backwards) — pure functions, zero LLM, exactly unit-testable. Inputs come from a **fully deterministic synthetic-universe generator** (`seed → a runnable novel package`, byte-identical across runs, with self-checked invariants and negative-control tests), so ground truth never wobbles. **Designed, not yet built** (see `docs/BENCH_PLAN.md`): semantic judging of knowledge boundaries and context rot (checklist-style LLM judging behind a Kappa gate), batch runs with three-tier harness ablation, and the leaderboard. Also ships as an **MCP server** — five tools an agent can call directly. See `bench/mcpserver/README.md` and `docs/lcb-writeup.md`.
+**LCB (v0.4.0) — a benchmark for long-horizon consistency.** The same consistency checkers the framework uses for quality gates, extracted into a benchmark: constraint adherence (banned words, length, POV, pronouns) and state consistency (dead characters walking, teleporting items, time going backwards) — pure functions, zero LLM, exactly unit-testable. Inputs come from a **fully deterministic synthetic-universe generator** (`seed → a runnable novel package`, byte-identical across runs, with self-checked invariants and negative-control tests), so ground truth never wobbles. Batch runs with a **three-tier harness ablation** (bare / context-injected / full-gate), paired gate attribution, anti-gaming self-tests, a static leaderboard, and a reproduction protocol all shipped in v0.4.0 — first controlled runs across three vendors are in `docs/lcb-results-v2.md`. Still being built: semantic judging of knowledge boundaries (checklist-style LLM judging behind a Kappa gate). Also ships as an **MCP server** — five tools an agent can call directly. See `bench/mcpserver/README.md`, `docs/lcb-writeup.md` and `docs/BENCH_PROTOCOL.md`.
