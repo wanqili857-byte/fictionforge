@@ -41,4 +41,11 @@ def sentences(line: str) -> list:
 
 
 def has_past_marker(sentence: str) -> bool:
+    """句内是否含过去时/回忆标记。
+
+    注意：集合里含比喻/传闻词（像/仿佛/听说），它们对「死人活动」判据是
+    宽豁免——会漏掉「老周走过来，像往常一样…」这类真复活；但收窄实测代价
+    更大（比喻框与定语从句误报 4 条 : 真阳性 0 条），故保留宽带，
+    边界写在 bench/judges/state_judge.py 的 docstring 里。
+    """
     return any(m in sentence for m in PAST_MARKERS)

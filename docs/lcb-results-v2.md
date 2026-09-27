@@ -1,7 +1,7 @@
 # LCB 跑批结果 v2（方舟通道 · 三厂商 · 三档 harness）
 
 > 生成条件：合成宇宙 seed=42 × 6 章，k=1，harness 三档（bare/mid/full），
-> 判定器 `m0.2.0`（死人复活判据 v2），生成通道 = 火山方舟 coding plan（订阅制）。
+> 判定器 `m0.3.0`，生成通道 = 火山方舟 coding plan（订阅制）。
 > 跑批日期 2026-09-26/27。复现步骤见 `docs/BENCH_PROTOCOL.md`。
 
 ## 每次运行
@@ -13,7 +13,7 @@
 | ark-glm-flash__full__k0 | glm-5.3-flash | full | 7241 | 4 | **0** | 0.0 | 4 | 0 | 0 | 0 | 6→4 | 订阅 |
 | ark-ds-flash__bare__k0 | deepseek-v4.1-flash | bare | 11692 | 8 | 5 | 4.28 | 3 | 5 | 0 | 0 | — | 订阅 |
 | ark-ds-flash__mid__k0 | deepseek-v4.1-flash | mid | 12072 | 3 | 2 | 1.66 | 1 | 2 | 0 | 0 | — | 订阅 |
-| ark-ds-flash__full__k0 | deepseek-v4.1-flash | full | 13565 | 3 | **0.74** | 0.74 | 2 | 0 | 1 | 0 | 7→3 | 订阅 |
+| ark-ds-flash__full__k0 | deepseek-v4.1-flash | full | 13565 | 3 | **1** | 0.74 | 2 | 0 | 1 | 0 | 7→3 | 订阅 |
 | ark-db-lite__bare__k0 | doubao-seed-2-1-lite | bare | 14410 | 16 | 12 | 8.33 | 4 | 10 | 2 | 0 | — | 订阅 |
 | ark-db-lite__mid__k0 | doubao-seed-2-1-lite | mid | 14186 | 10 | 7 | 4.93 | 3 | 4 | 0 | 3 | — | 订阅 |
 | ark-db-lite__full__k0 | doubao-seed-2-1-lite | full | 12928 | 2 | **0** | 0.0 | 2 | 0 | 0 | 0 | 4→2 | 订阅 |
@@ -42,11 +42,11 @@
    万能药」在这个家族上不成立。而 deepseek/doubao 的 mid 都是正贡献。
 3. **门禁配对测量**：三家修前核心 9 → 修后 1，门禁只做减法（删禁词、切长段），
    补不了篇幅——glm full 残留 4 条全是篇幅（它写不满 1900 字目标）。
-4. **成本口径**：订阅通道成本列标「订阅」，可比量是 token。实测思考型模型
-   单章 output 1 万~2.3 万 token（其中 reasoning 占大头；glm 的 reasoning
-   计入 max_tokens、doubao 的不计）——同一张表里的「一个章节」在不同模型
-   手里的算力成本差 3 倍以上。
-5. **判定器版本 m0.2.0**：首轮判决后人工抽查发现 12 条 state-dead 全是误报
+4. **成本口径**：订阅通道成本列标「订阅」，可比量是 token。实测单章 output：
+   glm 4.0k~32.8k（均值约 2.3 万，reasoning 占大头，且 reasoning 计入
+   max_tokens）、doubao 6.8k~13.6k、deepseek 1.0k~2.4k——**均值差 8 倍以上**，
+   同一张表里的「一个章节」在不同模型手里的算力成本完全不同口径。
+5. **判定器版本 m0.3.0**：v2 跑批后人工抽查发现 12 条 state-dead 全是误报
    （死者名字写在流水册上、「是他的字」「当时蹲在这」——遗物/回忆性指称），
    判据改为正向证据制（活动动词窗口），12 条 FP 原文进测试夹具钉死。
    判决可重算：`--rejudge` 零 LLM 调用重出全部判决。

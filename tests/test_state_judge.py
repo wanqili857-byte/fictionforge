@@ -186,13 +186,16 @@ def test_item_conflict():
 def test_edges():
     led = ledger_with_death()
     check("空文本不崩不报", state_judge("", led, 3, "r1") == [])
-    vs = state_judge("老周来了。", led, 3, "r1")
+    # 夹具必须真能命中：曾用「老周来了。」（「来」不在活动动词表），
+    # 于是下面 5 条 all(... for v in []) 全部空真——改坏判据也照样全绿。
+    vs = state_judge("老周把水递过来。", led, 3, "r1")
+    check("夹具非空（否则以下断言全空真）", len(vs) == 1)
     check("类型恒 state", all(v.type == ViolationType.STATE for v in vs))
     check("detector 恒 mechanical",
           all(v.detector == DetectorKind.MECHANICAL for v in vs))
     check("run_id 回填", all(v.run_id == "r1" for v in vs))
-    a = state_judge("老周来了。", led, 3, "r1")
-    b = state_judge("老周来了。", led, 3, "r1")
+    a = state_judge("老周把水递过来。", led, 3, "r1")
+    b = state_judge("老周把水递过来。", led, 3, "r1")
     check("确定性", [v.to_dict() for v in a] == [v.to_dict() for v in b])
     check("启发式置信<1", all(v.confidence < 1.0 for v in a))
 

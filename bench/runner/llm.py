@@ -182,6 +182,24 @@ def call_model(spec: ModelSpec, system: str, user: str,
             err = f"{type(e).__name__}: {e}"
         if status == 200:
             break
+        if status == 200:
+            try:
+                payload = r.json()
+            except Exception as e:
+                # 网关偶尔返回 200 + 截断/HTML body——同属瞬态，按同一退避重试
+                err = f"ParseError: {type(e).__name__}: {e}"
+                status = None
+                exc_name = "ParseError"
+                if _should_retry(None, exc_name, attempt):
+                    wait = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
+                    time.sleep(wait)
+                    continue
+                return {"text": "", "tokens_in": 0, "tokens_out": 0,
+                        "error": err, "cost": 0.0, "proxy": px["source"]}
+            out = parse_response(payload)
+            out["cost"] = spec.cost(out["tokens_in"], out["tokens_out"])
+            out["proxy"] = px["source"]
+            return out
         exc_name = err.split(":")[0] if err else None
         if _should_retry(status, exc_name, attempt):
             wait = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
@@ -193,12 +211,3 @@ def call_model(spec: ModelSpec, system: str, user: str,
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"HTTP {status}: {r.text[:200]}", "cost": 0.0,
                 "proxy": px["source"]}
-
-    try:
-        out = parse_response(r.json())
-    except Exception as e:
-        return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                "error": f"响应解析失败: {e}", "cost": 0.0, "proxy": px["source"]}
-    out["cost"] = spec.cost(out["tokens_in"], out["tokens_out"])
-    out["proxy"] = px["source"]
-    return out

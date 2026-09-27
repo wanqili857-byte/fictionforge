@@ -353,8 +353,10 @@ def test_empty_generation_is_recorded_not_written():
                     generate_fn=gen, judge_fn=fake_judge, log=lambda *_: None)
     run = res["runs"][0]
     check("空正文记为错误", run["errors"] and "正文为空" in run["errors"][0]["error"])
-    check("空正文不落盘", not (out / "ds-flash__mid__k0" / "ch1.md").exists()
-          and not (out / "ds-flash__bare__k0" / "ch1.md").exists())
+    # 只查本次真跑过的档位目录：曾经还写了一条 mid 目录的断言，
+    # 而这次只跑 bare——那条恒真（mid 目录根本不会被创建）。
+    check("空正文不落盘",
+          list((out / "ds-flash__bare__k0").glob("ch*.md")) == [])
     check("空正文书目数为 0", run["chapters_done"] == 0)
 
 

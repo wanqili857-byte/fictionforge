@@ -146,7 +146,10 @@ def gate_contribution(runs: dict) -> dict:
     pre_core = post_core = 0
     n_runs = 0
     for r in runs.values():
-        if r["tier"] != "full" or not r["violations"].get("post_fix"):
+        # 注意：必须判「键是否存在」，不能判真假——post_fix == [] 正是门禁
+        # 把违反擦干净的最好情形，用 `not r[...].get("post_fix")` 会把它跳过，
+        # 导致 removed 系统性低估（三家里若有全擦干净的模型，直接从表里消失）。
+        if r["tier"] != "full" or "post_fix" not in (r["violations"] or {}):
             continue
         if not r["chars"]:
             continue
@@ -170,7 +173,13 @@ def load_runs(out_dir) -> dict:
         data = json.loads(run_json.read_text(encoding="utf-8"))
         summary = data.get("_summary") or {}
         vio_path = run_dir / "violations.json"
-        violations = json.loads(vio_path.read_text(encoding="utf-8")) if vio_path.exists() else {"pre_fix": [], "post_fix": []}
+        # **缺 violations.json = 该 run 不可信**：兜底成空清单会让残缺 run
+        # 以「零违反」身份上榜（且续跑因 run.json 完整而永不修复）。
+        # 这里标记出来，由 build_table 当未完成处理。
+        violations_missing = not vio_path.exists()
+        violations = (json.loads(vio_path.read_text(encoding="utf-8"))
+                      if not violations_missing
+                      else {"pre_fix": [], "post_fix": []})
         # 篇幅：正文（非修正稿）字数合计
         chars = 0
         for f in sorted(run_dir.glob("ch*.md")):
@@ -180,7 +189,7 @@ def load_runs(out_dir) -> dict:
         runs[data["run_id"]] = {
             "model": summary.get("model"), "tier": summary.get("tier"),
             "k": summary.get("k"), "summary": summary, "violations": violations,
-            "chars": chars,
+            "chars": chars, "violations_missing": violations_missing,
             "cost": (data.get("cost") or {}).get("currency_cost", 0.0),
             "billing": summary.get("billing") or "per_token",
         }
@@ -205,7 +214,9 @@ def build_table(runs: dict, expected_chapters: int = None) -> list:
         fam = s["by_family"]
         # 未完成（0 章 / 0 字）不能显示为 0 违反——那会被读成"完美"
         done = (r["summary"] or {}).get("chapters_done")
-        incomplete = is_incomplete(r)
+        # 缺 violations.json 的 run 一律当未完成：它没有可核对的判决，
+        # 显示成 0 违反会冒充榜首。
+        incomplete = is_incomplete(r) or r.get("violations_missing", False)
         partial = (not incomplete and expected_chapters
                    and done is not None and done < expected_chapters)
         rows.append({
@@ -229,17 +240,26 @@ def build_table(runs: dict, expected_chapters: int = None) -> list:
     return rows
 
 
-def aggregate_by_model(runs: dict) -> list:
-    """模型汇总：每档平均**核心**违反率（剔篇幅）+ 三档归因 + 平均成本。"""
+def aggregate_by_model(runs: dict, expected_chapters: int = None) -> list:
+    """模型汇总：每档平均**核心**违反率（剔篇幅）+ 三档归因 + 平均成本。
+
+    剔除规则（与 render_markdown 脚注必须一致）：
+    - 未完成 / 缺判决的 run 不进汇总
+    - 部分完成（chapters_done < 期望章数）不进汇总——部分运行的密度不可比。
+      expected_chapters 缺省时退化为「以本批最大完成度为准」，此时**全体同样
+      残缺就会全体入选**，与脚注「不参与汇总」自相矛盾；正式报表一律传期望章数。
+    """
     by_model = {}
-    # 未完成 / 部分完成都不参与汇总（部分运行的密度不可比）
     done_map = {k: (v.get("summary") or {}).get("chapters_done")
                 for k, v in runs.items()}
-    full_done = max([d for d in done_map.values() if d], default=None)
+    if expected_chapters is None:
+        expected = max([d for d in done_map.values() if d], default=None)
+    else:
+        expected = expected_chapters
     for k, r in runs.items():
-        if is_incomplete(r):
+        if is_incomplete(r) or r.get("violations_missing", False):
             continue
-        if full_done and done_map[k] is not None and done_map[k] < full_done:
+        if expected and done_map[k] is not None and done_map[k] < expected:
             continue
         by_model.setdefault(r["model"], {}).setdefault(r["tier"], []).append(r)
     out = []
@@ -289,6 +309,16 @@ def _cost_cell(cost, billing: str) -> str:
 
 # ── 榜单（W10）：静态、可复算，排序规则公开 ─────────────────────────────
 
+def _billing_label(billing: str) -> str:
+    """榜单的计费列只标口径，**不显示金额**。
+
+    榜单不报成本数字，是因为零边际成本通道与按量通道的钱数不可比；
+    曾经复用 _cost_cell(0.0, "per_token") 渲染出字面量 "0.0"，读起来就是
+    「这个模型免费」——按量模型被显示成 $0 是误导，不是省略。
+    """
+    return {"subscription": "订阅", "free_quota": "免费额度"}.get(billing, "按量")
+
+
 def leaderboard(agg: list, tiers=("bare", "mid", "full")) -> list:
     """从模型汇总出榜单：核心违反率升序、并列同名次、缺档位降级。
 
@@ -331,7 +361,7 @@ def render_leaderboard(ranked: list) -> str:
         cell = lambda v: "—" if v is None else v
         lines.append(f"| {e['rank']} | {e['model']} | {e['bare']} | "
                      f"{cell(e.get('mid'))} | {cell(e.get('full'))} | "
-                     f"{_cost_cell(0.0, e.get('billing', 'per_token'))} | {miss} |")
+                     f"{_billing_label(e.get('billing', 'per_token'))} | {miss} |")
     return "\n".join(lines) + "\n"
 
 
@@ -417,8 +447,11 @@ def main():
         except Exception:
             expected = None
     rows = build_table(runs, expected_chapters=expected)
-    agg = aggregate_by_model(runs)
+    agg = aggregate_by_model(runs, expected_chapters=expected)
     md = render_markdown(rows, agg)
+    # 榜单进报表：此前 leaderboard/render_leaderboard 有实现有单测却没人调用，
+    # 于是「静态榜单页已就绪」是一句空话——页面并不存在。
+    md += "\n" + render_leaderboard(leaderboard(agg))
     print(md)
     if args.write:
         p = Path(args.out_dir) / "report.md"

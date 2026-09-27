@@ -107,8 +107,11 @@ def mechanical_judge(text: str, rules: MechanicalRules, run_id: str,
     narr_lines = []
     for line in lines:
         stripped = line.strip()
-        if not stripped or _DIALOG_RE.match(stripped):
+        if not stripped:
             continue
+        # 用 narration() 剥引文，而不是「行首是引号就整行跳过」——
+        # 后者会连行内引号之后的旁白一起吞掉：
+        # `“这是我的。”我蹲进凹陷。` 曾整行漏判（POV/人称/状态判定同病）。
         narr = narration(stripped)
         if not narr.strip():
             continue

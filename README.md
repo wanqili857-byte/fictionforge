@@ -147,7 +147,7 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 - 🏆 **榜单与复现协议** —— 静态榜单(bare 档排序/并列同名次) + `docs/BENCH_PROTOCOL.md`:宇宙 sha256 校准、manifest 校验清单、榜单准入规则
 
-**首期跑批结果**(三厂商 × 三档 × 6 章,判定器 m0.2.0,见 `docs/lcb-results-v2.md`):裸写 glm-5.3-flash 最优(2.52 核心违反/万字),deepseek 最吃上下文工程红利,doubao 被 harness 拉到修后 0;**glm 家族对上下文注入负贡献,跨两期跑批复现**。
+**首期跑批结果**(三厂商 × 三档 × 6 章,判定器 m0.3.0,见 `docs/lcb-results-v2.md`):裸写 glm-5.3-flash 最优(2.52 核心违反/万字);给上下文后**豆包绝对改善最大**(8.33→4.93)、**deepseek 相对降幅最大**(4.28→1.66);三家被满配门禁拉到修后 0/0.74/0。**glm 家族对上下文注入负贡献,跨两期跑批复现**。
 
 **设计中(见 `docs/BENCH_PLAN.md`)**
 
@@ -173,7 +173,8 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 | 版本 | 内容 |
 |---|---|
-| **v0.4.0** | **LCB 长程一致性基准**:判定器(m0.2.0)/合成宇宙(逐字节可复现)/三档 harness 跑批/指标(密度+绝对数成对、门禁配对)/抗刷分自测/榜单/复现协议/MCP server;两期受控跑批出数([结果](docs/lcb-results-v2.md)) |
+| **v0.4.1** | **审计修复**:CI 覆盖 LCB 全部套件、报表三处静默缺陷(门禁全清的 run 被漏统计/缺判决的残缺 run 冒充零违反/部分完成混入汇总)、旁白剥离修正、文档数字对账 |
+| v0.4.0 | **LCB 长程一致性基准**:判定器(m0.3.0 起)/合成宇宙(逐字节可复现)/三档 harness 跑批/指标(密度+绝对数成对、门禁配对)/抗刷分自测/榜单/复现协议/MCP server;两期受控跑批出数([结果](docs/lcb-results-v2.md)) |
 | v0.3.0 | **修订感知管线**:canon/drafts 分家、修订 diff 打标→素材库回灌、`--resection` 局部重生成、情节漂移回流 |
 | v0.2.0 | 理论心智层:真相表 + 知识 vs 真相 + A/B 反转素材、顶层协调器(gen/engine/hybrid) |
 | v0.1.0 | 引擎全链:TickRunner→角色 agents→Narrator 合成,框架/内容包解耦 |

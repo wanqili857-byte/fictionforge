@@ -9,12 +9,24 @@
 
 启发式项 confidence < 1.0（机械层无法确证「活动中」vs「被提及」的边界），
 证据带 span 供人工复核——Kappa 校准在 W5 统一做。
+
+**已知边界（不修，写明）**：
+1. 相对天数只豁免「第二天」这一惯用式（`RELATIVE_DAY`），「第三天」「第四天」按
+   绝对天数比对锚点。这是刻意的：中文叙事里「第三天」通常就是故事第 3 天，
+   全豁免会把天数倒退检测削掉；「又过了两天，第三天…」这类真相对表达会误报
+   一条 conf 0.8、带 span 的候选，交人工复核。
+2. 比喻/传闻标记（像/仿佛/听说）会整句豁免死人活动判据——「老周走过来，
+   **像**往常一样把水递给她」这类真复活会漏报。试过收窄（把这些标记从豁免
+   集合里去掉），实测代价更大：db-lite mid 一章就新增 4 条误报
+   （「**就像**三年前站在跳板中间的老麦」「老麦**走过**的路」「老麦**走**的那年」
+   ——全是比喻框与定语从句），真阳性 0 条。**误报 4 : 真阳性 0，收窄不划算**，
+   故保留宽豁免，把漏报形态记在这里。这就是 Kappa 校准（W5）要量的东西。
 """
 
 import re
 
 from bench.contracts import Violation, ViolationType, DetectorKind, Severity
-from bench.judges.text_utils import is_dialogue, sentences, has_past_marker
+from bench.judges.text_utils import narration, sentences, has_past_marker
 
 _DAY_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*天")
 _VIOL_CH_RE = re.compile(r"第(\d+)章")
@@ -75,9 +87,12 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
             dead.update(c.deaths)
     if dead and text:
         for line in text.split("\n"):
-            if is_dialogue(line):
+            # 剥引文而非「行首引号就整行跳过」：行内引号之后的旁白也要判
+            # （`“这是我的。”我蹲进凹陷。` 曾整行漏判）
+            narr = narration(line)
+            if not narr.strip():
                 continue
-            for sent in sentences(line):
+            for sent in sentences(narr):
                 if has_past_marker(sent) or _MEMORIAL_RE.search(sent):
                     continue
                 for name in sorted(dead):
@@ -108,9 +123,12 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
     anchor_day = cur.day if cur else None
     if anchor_day is not None and text:
         for line in text.split("\n"):
-            if is_dialogue(line):
+            # 剥引文而非「行首引号就整行跳过」：行内引号之后的旁白也要判
+            # （`“这是我的。”我蹲进凹陷。` 曾整行漏判）
+            narr = narration(line)
+            if not narr.strip():
                 continue
-            for sent in sentences(line):
+            for sent in sentences(narr):
                 if has_past_marker(sent):
                     continue
                 for m in _DAY_RE.finditer(sent):

@@ -221,7 +221,65 @@ def test_leaderboard():
     md = M.render_leaderboard(ranked)
     check("榜单渲染含口径说明", "排序键" in md and "零边际成本" in md)
     check("缺档渲染为 —", "| 3 | b | 3.3 | 1.1 | 0.0 | 订阅 | — |" in md
-          and "| 1 | a | 1.1 | — | 0.5 | 0.0 | mid |" in md)
+          and "| 1 | a | 1.1 | — | 0.5 | 按量 | mid |" in md)
+    # 计费列只标口径：按量模型曾渲染成字面量 "0.0"（读起来是「免费」）
+    check("按量模型计费列标「按量」而非 0.0",
+          M._billing_label("per_token") == "按量"
+          and M._billing_label("subscription") == "订阅"
+          and M._billing_label("free_quota") == "免费额度")
+
+
+def test_gate_contribution_counts_fully_cleaned_runs():
+    """门禁把违反擦干净的 run（post_fix == []）正是最好情形，不能被跳过。
+
+    缺陷形态：`not r["violations"].get("post_fix")` —— 空列表为假 → 整 run 跳过
+    → removed 系统性低估（全擦干净的模型直接从表里消失）。"""
+    def run(model, pre, post):
+        return {"model": model, "tier": "full", "k": 0, "chars": 1000, "cost": 0.0,
+                "summary": {"model": model, "tier": "full", "k": 0, "chapters_done": 6},
+                "violations": {"pre_fix": [vio("constraint", probe=p) for p in pre],
+                               "post_fix": [vio("constraint", probe=p) for p in post]}}
+    runs = {
+        "a__full__k0": run("a", ["cons-forbidden-ch1", "cons-para-ch2"], []),   # 全擦干净
+        "b__full__k0": run("b", ["cons-forbidden-ch1"], ["cons-length-ch1"]),   # 残留篇幅
+    }
+    g = M.gate_contribution(runs)
+    check("全擦干净的 run 计入", g["full_runs"] == 2)
+    check("擦除数含全清 run", g["core_pre"] == 3 and g["core_post"] == 0
+          and g["removed"] == 3)
+
+
+def test_missing_violations_json_is_not_zero_violations():
+    """缺 violations.json 的残缺 run 不能以「零违反」身份上榜。"""
+    out = Path(tempfile.mkdtemp())
+    d = out / "m1__bare__k0"
+    d.mkdir()
+    (d / "ch1.md").write_text("正文" * 50, encoding="utf-8")
+    (d / "run.json").write_text(json.dumps({
+        "run_id": "m1__bare__k0", "cost": {"currency_cost": 0.0},
+        "_summary": {"model": "m1", "tier": "bare", "k": 0, "chapters_done": 1},
+    }), encoding="utf-8")   # 故意不写 violations.json
+    runs = M.load_runs(out)
+    check("标记缺判决", runs["m1__bare__k0"]["violations_missing"] is True)
+    row = M.build_table(runs)[0]
+    check("缺判决按未完成处理", row["incomplete"] is True and row["core_abs"] is None)
+    check("缺判决不进汇总", M.aggregate_by_model(runs) == [])
+    check("缺判决不进榜单", M.leaderboard(M.aggregate_by_model(runs)) == [])
+
+
+def test_aggregate_excludes_partial_by_expected_chapters():
+    """部分完成必须按**期望章数**剔除：全体同样残缺时不能靠「最大完成度」兜底，
+    否则汇总表收了人，脚注却写「不参与汇总」——自相矛盾。"""
+    def run(model, done):
+        return {"model": model, "tier": "bare", "k": 0, "chars": 1000, "cost": 0.0,
+                "summary": {"model": model, "tier": "bare", "k": 0,
+                            "chapters_done": done},
+                "violations": {"pre_fix": [vio("constraint")], "post_fix": []}}
+    runs = {"m1__bare__k0": run("m1", 2), "m2__bare__k0": run("m2", 2)}
+    check("全体残缺+无期望章数时按最大完成度兜底",
+          {a["model"] for a in M.aggregate_by_model(runs)} == {"m1", "m2"})
+    check("给出期望章数则全部剔除",
+          M.aggregate_by_model(runs, expected_chapters=6) == [])
 
 
 def test_load_runs():
@@ -269,6 +327,9 @@ if __name__ == "__main__":
     test_render_markdown()
     test_subscription_cost_not_rendered_as_zero()
     test_leaderboard()
+    test_gate_contribution_counts_fully_cleaned_runs()
+    test_missing_violations_json_is_not_zero_violations()
+    test_aggregate_excludes_partial_by_expected_chapters()
     test_load_runs()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

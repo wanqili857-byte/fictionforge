@@ -116,6 +116,16 @@ def test_pov_first_person():
     check("弯引号内人称豁免", vs4 == [])
 
 
+def test_dialogue_strip_not_line_skip():
+    """行首引号之后的旁白也要判——旧实现「行首是引号就整行跳过」会把它吞掉。"""
+    rules = MechanicalRules(pov="third_limited")
+    check("纯对话行仍豁免（剥引文后为空）",
+          mechanical_judge("“这是我的，你少管。”", rules, "r1", 1) == [])
+    for text in ["“这是我的。”我蹲进凹陷。", "「放下。」我蹲进凹陷。"]:
+        vs = mechanical_judge(text, rules, "r1", 1)
+        check(f"行首引号后的旁白第一人称被抓到: {text[:6]}", len(vs) == 1)
+
+
 # ── 人称混用 ──────────────────────────────────────────────────────────
 
 def test_pronoun_switch():
@@ -196,6 +206,7 @@ if __name__ == "__main__":
     test_overlength_paragraph()
     test_target_length()
     test_pov_first_person()
+    test_dialogue_strip_not_line_skip()
     test_pronoun_switch()
     test_quoted_span_not_narration()
     test_edges_and_determinism()
