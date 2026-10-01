@@ -76,30 +76,15 @@
       "note": ""
     },
     {
-      "probe_id": "cons-length-ch5",
+      "probe_id": "cons-forbidden-ch5",
       "type": "constraint",
       "detector": "mechanical",
       "chapter": 5,
-      "severity": "medium",
-      "evidence": {
-        "actual": 146,
-        "target": 1900,
-        "span": "1520-2280"
-      },
-      "run_id": "batch",
-      "confidence": 1.0,
-      "note": ""
-    },
-    {
-      "probe_id": "cons-forbidden-ch6",
-      "type": "constraint",
-      "detector": "mechanical",
-      "chapter": 6,
       "severity": "fatal",
       "evidence": {
         "word": "忽然",
         "count": 1,
-        "first_span": "事的盯着她看了半晌，忽然松了口风：\n\n“棚里"
+        "first_span": "买。\n\n捏铜板的那个忽然也买了鱼，先她一步出"
       },
       "run_id": "batch",
       "confidence": 1.0,

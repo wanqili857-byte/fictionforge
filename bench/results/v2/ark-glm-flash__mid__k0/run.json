@@ -10,10 +10,10 @@
     "proxy": "policy:direct",
     "run_id": "ark-glm-flash__mid__k0",
     "tier": "mid",
-    "tokens_in": 6220,
-    "tokens_out": 138923,
+    "tokens_in": 6947,
+    "tokens_out": 164621,
     "violations_post_fix": null,
-    "violations_pre_fix": 7
+    "violations_pre_fix": 6
   },
   "bench": {
     "bench_version": "0.1.0",
@@ -34,13 +34,13 @@
   },
   "cost": {
     "currency_cost": 0.0,
-    "tokens_in": 6220,
-    "tokens_out": 138923
+    "tokens_in": 6947,
+    "tokens_out": 164621
   },
-  "generated_at": "2026-10-01T14:31:31.468064+00:00",
+  "generated_at": "2026-10-01T15:04:30.437764+00:00",
   "harness": "mid",
   "k_index": 0,
-  "max_tokens": 32768,
+  "max_tokens": 65536,
   "model": "glm-5-3-flash-260828",
   "notes": "billing=subscription; proxy=policy:direct",
   "prompt_hashes": {
@@ -49,7 +49,7 @@
     "3": "42ac96fd624353444dfecd3c098c2cbfae8a9907575a74df8021aafbe39764ef",
     "4": "5296594a3ccf1992b5c725c43d16ccc808db5f1ef5ab3e7b6d55ab2c310fc59f",
     "5": "1993032564468beb83b71c4fc5ec6ac31f31e5f04ea1ad6cfbb749abe015f031",
-    "6": "e117f741099d98dcc2b83148da8d8e49148e3b259c552132c31d0a3aa7141236"
+    "6": "c9fbcd702dc4f17cb281974e862bfab9bbd4ad29cf7ccec11179a846dc1296ce"
   },
   "provider": "ark",
   "run_id": "ark-glm-flash__mid__k0",

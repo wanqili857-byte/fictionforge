@@ -82,7 +82,7 @@
       "chapter": 6,
       "severity": "medium",
       "evidence": {
-        "actual": 563,
+        "actual": 627,
         "target": 1900,
         "span": "1520-2280"
       },
@@ -144,7 +144,7 @@
       "chapter": 6,
       "severity": "medium",
       "evidence": {
-        "actual": 563,
+        "actual": 627,
         "target": 1900,
         "span": "1520-2280"
       },

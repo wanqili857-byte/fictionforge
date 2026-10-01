@@ -129,7 +129,7 @@
       "run_id": "ark-glm-flash__full__k0",
       "tier": "full",
       "tokens_in": 6688,
-      "tokens_out": 108350,
+      "tokens_out": 106084,
       "violations_post_fix": 4,
       "violations_pre_fix": 6
     },
@@ -144,10 +144,10 @@
       "proxy": "policy:direct",
       "run_id": "ark-glm-flash__mid__k0",
       "tier": "mid",
-      "tokens_in": 6220,
-      "tokens_out": 138923,
+      "tokens_in": 6947,
+      "tokens_out": 164621,
       "violations_post_fix": null,
-      "violations_pre_fix": 7
+      "violations_pre_fix": 6
     }
   ]
 }

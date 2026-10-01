@@ -5,4 +5,4 @@
 {"chapter": 3, "tokens_in": 1159, "tokens_out": 14496, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "305ad6591b98a9850db1adb2c45224661ee1e1319cbf139f52f781a525a8b3ff"}
 {"chapter": 4, "tokens_in": 1329, "tokens_out": 15444, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "d321e9e66d44048d69d576856b7e61b94ddb90a7e877efc4fefedbb9095822b8"}
 {"chapter": 5, "tokens_in": 1113, "tokens_out": 32768, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "e69803c35990a471b89d2d22f50c44694ecf3eee1c3845fe1fed48882924b5c0"}
-{"chapter": 6, "tokens_in": 1346, "tokens_out": 22974, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "0aecd58539e9cd18707657061b92347a7610e62d20df6bd1d90a28d451e279cd"}
+{"chapter": 6, "tokens_in": 1346, "tokens_out": 20708, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "0aecd58539e9cd18707657061b92347a7610e62d20df6bd1d90a28d451e279cd"}

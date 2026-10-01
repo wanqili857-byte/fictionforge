@@ -11,7 +11,7 @@
     "run_id": "ark-glm-flash__full__k0",
     "tier": "full",
     "tokens_in": 6688,
-    "tokens_out": 108350,
+    "tokens_out": 106084,
     "violations_post_fix": 4,
     "violations_pre_fix": 6
   },
@@ -35,12 +35,12 @@
   "cost": {
     "currency_cost": 0.0,
     "tokens_in": 6688,
-    "tokens_out": 108350
+    "tokens_out": 106084
   },
-  "generated_at": "2026-10-01T14:31:31.472899+00:00",
+  "generated_at": "2026-10-01T15:04:30.442699+00:00",
   "harness": "full",
   "k_index": 0,
-  "max_tokens": 32768,
+  "max_tokens": 65536,
   "model": "glm-5-3-flash-260828",
   "notes": "billing=subscription; proxy=policy:direct",
   "prompt_hashes": {

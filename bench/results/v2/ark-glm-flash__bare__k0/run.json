@@ -37,10 +37,10 @@
     "tokens_in": 1846,
     "tokens_out": 84472
   },
-  "generated_at": "2026-10-01T14:31:31.464652+00:00",
+  "generated_at": "2026-10-01T15:04:30.434428+00:00",
   "harness": "bare",
   "k_index": 0,
-  "max_tokens": 32768,
+  "max_tokens": 65536,
   "model": "glm-5-3-flash-260828",
   "notes": "billing=subscription; proxy=policy:direct",
   "prompt_hashes": {
