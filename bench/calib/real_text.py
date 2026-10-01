@@ -80,6 +80,11 @@ def _splice(text: str, sentence: str, pos: float = 0.5) -> str:
     return "\n".join(lines)
 
 
+# 中性对照：与被注入句**形状相同**（同样插在同一位置、同样带标点与长度）
+# 但不含任何违反。它的存在是为了回答一个反驳：注入带来的增量会不会只是
+# 「多插了一句话」造成的？中性句不产生增量，才说明增量来自违反本身（评审 F5）。
+NEUTRAL_SENTENCE = "她把绳子在桩上绕了两圈，又解开。"
+
 PROBES = [
     {   # 死人复活：活动 vs 遗物/回忆指称
         "kind": "state-dead",
@@ -88,6 +93,8 @@ PROBES = [
         "positive": f"{PROBE_DEAD}走进来，把湿透的伞靠在门边。",
         "decoy": f"{PROBE_DEAD}的名字写在册子最后一页，字是墨写的。",
         "probe_prefix": "state-dead",
+        # 该类要能测，前提是**死者名在语料里出现**——否则「零命中」是构造决定的
+        "needs_entity_in_corpus": True,
     },
     {   # 天数倒退：绝对天数 vs 相对天数惯用式
         "kind": "state-day",
@@ -96,6 +103,7 @@ PROBES = [
         "positive": "第1天，他们还在码头上等潮。",
         "decoy": "第二天，他们还在码头上等潮。",
         "probe_prefix": "state-day",
+        "needs_entity_in_corpus": False,
     },
     {   # 视角越界：句首第一人称 vs 引语内的第一人称
         "kind": "cons-pov",
@@ -103,7 +111,12 @@ PROBES = [
         "judge": "mechanical",
         "positive": "我蹲进凹陷，等着上面的脚步过去。",
         "decoy": "她低声说：“我没听说有这回事。”",
+        # 第二个正例专测 m0.3.0 修的那条：行首引号之后的旁白也要判。
+        # 旧实现（整行跳过）对这句零命中，新实现必须命中——否则这次修复
+        # 在真实文本上没有任何回归保护（评审 F12）。
+        "positive_extra": "“这是我的。”我蹲进凹陷，等着上面的脚步过去。",
         "probe_prefix": "cons-pov",
+        "needs_entity_in_corpus": False,
     },
     {   # 禁词：旁白里的禁词（禁词不区分旁白/引语，两侧都该抓）
         "kind": "cons-forbidden",
@@ -112,6 +125,7 @@ PROBES = [
         "positive": f"她{PROBE_FORBIDDEN}停住，回头看了一眼。",
         "decoy": None,      # 该类无诱饵：禁词判据不区分语境，没有「不该报」的孪生句
         "probe_prefix": "cons-forbidden",
+        "needs_entity_in_corpus": False,
     },
     {   # 篇幅：超长段落 vs 正常段落
         "kind": "cons-para",
@@ -120,6 +134,7 @@ PROBES = [
         "positive": "她数着木板缝，" + "一" * 120 + "。",
         "decoy": "她数着木板缝，一直数到门开。",
         "probe_prefix": "cons-para",
+        "needs_entity_in_corpus": False,
     },
 ]
 
@@ -150,6 +165,51 @@ def _signal(vs: list, prefix: str) -> int:
     return total
 
 
+_NAME_STOP = ("他", "她", "它", "被", "的", "了", "着", "是", "有", "和", "与")
+_NAME_RE = re.compile(r"([\u4e00-\u9fa5]{2,3})(?=[说道问答看走站坐喊叫笑])")
+
+
+def guess_names(text: str, top: int = 1) -> list:
+    """从语料里猜出真实出场的人名（正对照用）。
+
+    粗糙但够用：取「两三个汉字 + 言语/动作动词」的高频片段，滤掉代词与虚词开头。
+    正对照只需要一个人名——**名字必须真的在语料里出现**，否则对照本身又是空测。
+    """
+    from collections import Counter
+    c = Counter(_NAME_RE.findall(text))
+    out = []
+    for name, _ in c.most_common(40):
+        if name[0] in _NAME_STOP or name[-1] in _NAME_STOP:
+            continue
+        if len(set(name)) == 1:
+            continue
+        out.append(name)
+        if len(out) >= top:
+            break
+    return out
+
+
+def positive_control(text: str, rules, chapter: int = 2, run_id: str = "pc") -> dict:
+    """**正对照**：把语料里真实出场的角色声明为死者，判据必须开火。
+
+    为什么必须有它：若探针死者名在语料里根本不出现，「干净文本上零命中」是
+    构造决定的，与判据好坏无关（评审 F3/F4 指出这是空测）。正对照把同一份
+    真实文本配上**能命中的前提**，如果它也是零命中，才说明判据在该负载上失灵。
+    """
+    names = guess_names(text)
+    if not names:
+        return {"name": None, "hits": None, "note": "语料里没猜出人名，正对照不可用"}
+    name = names[0]
+    led = build_ledger("CALIB-PC", [
+        _spec(1, ["第5天上午 @码头"], delta={"deaths": [name]}),
+        _spec(2, ["第6天上午 @货棚"]),
+    ], cast_names=[name, PROBE_PROTAGONIST], protagonist=PROBE_PROTAGONIST)
+    vs = _judge_all(text, led, rules, chapter, run_id)
+    hits = _hits(vs, "state-dead")
+    return {"name": name, "hits": len(hits),
+            "spans": [v.evidence.get("span", "")[:40] for v in hits[:3]]}
+
+
 def calibrate_texts(texts: list, chapter: int = 2) -> dict:
     """texts: [(名字, 正文)]；返回逐文本 × 逐判据的召回/特异性矩阵。"""
     ledger = calibration_ledger()
@@ -162,8 +222,16 @@ def calibrate_texts(texts: list, chapter: int = 2) -> dict:
         # 会被误记成「诱饵也被抓」，得出特异性 0% 的假结论。
         clean = _judge_all(text, ledger, rules, chapter, run_id=f"calib:{name}")
         base = {p["probe_prefix"]: _signal(clean, p["probe_prefix"]) for p in PROBES}
+        # 中性对照：同形状的无害句，增量必须为 0
+        neutral = _judge_all(_splice(text, NEUTRAL_SENTENCE), ledger, rules,
+                             chapter, f"calib:{name}:neutral")
+        neutral_delta = sum(_signal(neutral, p["probe_prefix"]) for p in PROBES) - sum(base.values())
         row = {"name": name, "chars": len(text.strip()),
-               "clean_candidates": len(clean), "clean_by_kind": base, "probes": {}}
+               "clean_candidates": len(clean), "clean_by_kind": base,
+               "neutral_delta": neutral_delta,
+               "probe_entity_in_corpus": PROBE_DEAD in text,
+               "positive_control": positive_control(text, rules, chapter, f"calib:{name}:pc"),
+               "probes": {}}
         for p in PROBES:
             pref = p["probe_prefix"]
             pos_vs = _judge_all(_splice(text, p["positive"]), ledger, rules,
@@ -174,7 +242,13 @@ def calibrate_texts(texts: list, chapter: int = 2) -> dict:
                 dec_vs = _judge_all(_splice(text, p["decoy"]), ledger, rules,
                                     chapter, f"calib:{name}:dec")
                 dec = _signal(dec_vs, pref) == base[pref]
+            extra = None
+            if p.get("positive_extra"):
+                ex_vs = _judge_all(_splice(text, p["positive_extra"]), ledger, rules,
+                                   chapter, f"calib:{name}:extra")
+                extra = _signal(ex_vs, pref) > base[pref]
             row["probes"][p["kind"]] = {"recall": hit_pos, "specificity": dec,
+                                        "recall_extra": extra,
                                         "baseline_hits": base[pref]}
         rows.append(row)
     return {"chapter": chapter, "rows": rows}
@@ -194,6 +268,10 @@ def summarize(result: dict) -> dict:
             "specificity": round(sum(spec) / len(spec), 3) if spec else None,
             "n": len(rec),
         }
+    # 「干净文本零命中」只在探针实体真的出现在语料里时才算证据（评审 F3）
+    measurable = [r for r in result["rows"] if r["probe_entity_in_corpus"]]
+    pcs = [r["positive_control"] for r in result["rows"]
+           if r["positive_control"]["hits"] is not None]
     chars = sum(r["chars"] for r in result["rows"])
     cand = sum(r["clean_candidates"] for r in result["rows"])
     baseline = {}
@@ -202,7 +280,14 @@ def summarize(result: dict) -> dict:
         baseline[k] = sum(r["clean_by_kind"].get(k, 0) for r in result["rows"])
     return {"kinds": kinds, "texts": len(result["rows"]), "chars": chars,
             "clean_candidates": cand, "clean_by_kind": baseline,
-            "candidates_per_10k": round(cand / chars * 10000, 2) if chars else 0.0}
+            "candidates_per_10k": round(cand / chars * 10000, 2) if chars else 0.0,
+            "state_dead_measurable_texts": len(measurable),
+            "neutral_delta_total": sum(r["neutral_delta"] for r in result["rows"]),
+            "positive_control": {
+                "texts_with_hits": sum(1 for p in pcs if p["hits"] > 0),
+                "texts_measured": len(pcs),
+                "example": pcs[0] if pcs else None,
+            }}
 
 
 def load_corpus(paths) -> list:
@@ -237,9 +322,24 @@ def render_markdown(summary: dict, result: dict, corpus_label: str) -> str:
     for k, n in summary["clean_by_kind"].items():
         note = "真实小说的段落长度本就超合成的口径" if k == "cons-para" else ""
         L.append(f"| `{k}` | {n} | {note} |")
-    L += ["", f"**候选（非注入、非诱饵）：{summary['clean_candidates']} 条，"
-              f"密度 {summary['candidates_per_10k']}/万字**——这些机器分不出是作者疏漏还是误报，"
-              "需人工复核，故不计入误报率。", ""]
+    pc = summary["positive_control"]
+    L += ["", "## 三项对照（回答「这份校准凭什么算数」）", "",
+          "| 对照 | 结果 | 它排除了什么 |",
+          "|---|---|---|",
+          f"| **中性注入**（同位置插一句无害句） | 增量 **{summary['neutral_delta_total']}** | "
+          "排除「增量只是多插了一句话造成的」——增量为 0，说明增量来自违反本身 |",
+          f"| **正对照**（把语料里真实出场的角色声明为死者） | "
+          f"{pc['texts_with_hits']}/{pc['texts_measured']} 段命中"
+          + (f"（例：{pc['example']['name']} → {pc['example']['hits']} 条）"
+             if pc.get("example") else "") + " | "
+          "排除「判据在真实散文上根本不开火」——前提成立时它确实开火 |",
+          f"| **可测性**（探针死者名是否出现在语料中） | "
+          f"{summary['state_dead_measurable_texts']}/{summary['texts']} 段可测 | "
+          "标明哪些「零命中」是证据、哪些只是构造决定的（不可测时标 n/a） |",
+          "",
+          f"**候选（非注入、非诱饵）：{summary['clean_candidates']} 条，"
+          f"密度 {summary['candidates_per_10k']}/万字**——这些机器分不出是作者疏漏还是误报，"
+          "需人工复核，故不计入误报率。", ""]
     return "\n".join(L) + "\n"
 
 

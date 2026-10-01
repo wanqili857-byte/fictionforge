@@ -40,6 +40,10 @@ CARRIER = "\n".join([
     "门里的话断断续续，听不真切。",
     "她退后半步，脚跟先着地，没出声。" * 6,
     "风把绳子吹得发响，远处有人在卸货。",
+    # 含真实人名的句子：正对照需要「语料里真实出场的角色」——没有名字时
+    # 正对照退化成空测（这条断言就是防它退化的）
+    "老周走过来，把湿透的伞靠在门边。",
+    "老周说道：“今天的潮位不对。”",
 ])
 
 
@@ -114,6 +118,40 @@ def test_summarize_math():
     check("逐判据都有记录", set(s["kinds"]) == {p["kind"] for p in R.PROBES})
 
 
+def test_three_controls():
+    """三项对照：中性注入不产生增量、正对照能命中、可测性被标注。
+
+    这三条是这轮校准被外部评审打回后补的（F3/F5）：没有它们，
+    「真实散文上零误报」只是「探针实体不在语料里」的必然结果。"""
+    res = R.calibrate_texts([("carrier", CARRIER)], chapter=2)
+    row = res["rows"][0]
+    check("中性对照增量为 0", row["neutral_delta"] == 0)
+    check("探针实体不在语料中被标出", row["probe_entity_in_corpus"] is False)
+    pc = row["positive_control"]
+    check("正对照用上了语料里的人名", pc["name"] is not None)
+    check("正对照确实命中（判据在真实散文上会开火）", pc["hits"] > 0)
+    summ = R.summarize(res)
+    check("汇总带中性对照与正对照", summ["neutral_delta_total"] == 0
+          and summ["positive_control"]["texts_measured"] == 1)
+    check("可测性计数进汇总", summ["state_dead_measurable_texts"] == 0)
+
+
+def test_quote_narration_extra_positive():
+    """行内引号之后的旁白（m0.3.0 修的那条）必须有正例覆盖，否则那次修复
+    在真实文本上没有回归保护（评审 F12）。"""
+    prow = [p for p in R.PROBES if p["kind"] == "cons-pov"][0]
+    check("cons-pov 带 extra 正例", bool(prow.get("positive_extra")))
+    res = R.calibrate_texts([("carrier", CARRIER)], chapter=2)
+    check("extra 正例被命中", res["rows"][0]["probes"]["cons-pov"]["recall_extra"] is True)
+
+
+def test_guess_names_skips_pronouns():
+    """正对照的名字猜测必须滤掉代词开头/结尾，否则拿「他接」去当死者名。"""
+    names = R.guess_names("他接过盐箱。老周走过来。老周说道。陆离退后。陆离说道。")
+    check("滤掉代词等非人名", all(n[0] not in ("他", "她", "它", "被") for n in names))
+    check("猜得出真实人名", "陆离" in names or "老周" in names)
+
+
 def test_no_decoy_kinds_declared():
     """禁词类没有「不该报」的孪生句（判据不区分语境）——必须显式声明，
     不能被当成「特异性未测」。"""
@@ -127,6 +165,9 @@ if __name__ == "__main__":
     test_differential_measurement_ignores_carrier_hits()
     test_signal_measurement_survives_chapter_aggregation()
     test_summarize_math()
+    test_three_controls()
+    test_quote_narration_extra_positive()
+    test_guess_names_skips_pronouns()
     test_no_decoy_kinds_declared()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)
