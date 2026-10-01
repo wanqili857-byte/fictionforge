@@ -24,7 +24,7 @@
 > **反直觉发现**：给 glm 注入上下文，它反而更差（跨两期跑批复现），而 deepseek 与
 > 豆包都是正贡献——「哪个模型最好」取决于你把它装进什么样的管线，没有绝对赢家。
 
-[完整结果与六条注解](docs/canonbench-results-v2.md) · [复现协议](docs/BENCH_PROTOCOL.md) · [方法与设计](docs/canonbench-writeup.md)
+[🌐 在线榜单](https://wanqili857-byte.github.io/fictionforge/) · [完整结果与六条注解](docs/canonbench-results-v2.md) · [复现协议](docs/BENCH_PROTOCOL.md) · [方法与设计](docs/canonbench-writeup.md)
 
 ## 30 秒跑一遍（零 token、零网络）
 
