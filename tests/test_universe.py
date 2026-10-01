@@ -169,6 +169,87 @@ def test_invariants():
           any("被当作行动者点名" in b for b in invariants(u3)))
 
 
+def _mutate_reveal_chapter_off_by_one():
+    """把某个发现型事实的 reveal_chapter 改到与其学习章不符（+1）。"""
+    def mutate(u):
+        for f in u.truth_table:
+            if f.get("common") or f["is_false"] or f["id"] == u.terminal_fact_id:
+                continue
+            f["reveal_chapter"] = f["reveal_chapter"] + 1
+            return
+    return mutate
+
+
+def _mutate_no_held_out():
+    """让每个角色都学会所有事实 → 探针池变空。"""
+    def mutate(u):
+        for c in list(u.knowledge):
+            for f in u.truth_table:
+                u.knowledge[c].append({"fact_id": f["id"], "learned_chapter": 1})
+    return mutate
+
+
+def test_every_invariant_can_fail():
+    """每条不变量各配一个阴性对照：人为改坏 → 必须被抓到。
+
+    这条测试的存在本身就是对评审 F7 的回应：初版有若干不变量从未被证明
+    「能红」，而一条不能失败的自检等于没有自检。分两类（见 generator.invariants
+    的 docstring）：语义检查 vs 构造保证回归检查——后者在 generate() 内不可能
+    失败，因此**只能在测试里**用人为改动来证明它会红。
+    """
+    def fresh(ch=8):
+        return generate(seed=5, chapters=ch)
+
+    cases = [
+        ("终局真相不在事实表",
+         lambda u: u.truth_table.__setitem__(0, dict(u.truth_table[0], id="X-99"))
+                   or setattr(u, "terminal_fact_id", "NOPE"),
+         "不在事实表"),
+        ("reveal_chapter 越界",
+         lambda u: u.truth_table[0].__setitem__("reveal_chapter", 99),
+         "reveal_chapter 非法"),
+        ("终局真相章号不等于末章",
+         lambda u: [f for f in u.truth_table if f["id"] == u.terminal_fact_id][0]
+                   .__setitem__("reveal_chapter", 1),
+         "必须等于末章"),
+        ("发现型事实与主角学习章不一致", _mutate_reveal_chapter_off_by_one(),
+         "与主角学习章"),
+        ("常识事实混进知识调度",
+         lambda u: u.knowledge[u.protagonist].append(
+             {"fact_id": [f["id"] for f in u.truth_table if f.get("common")][0],
+              "learned_chapter": 1}),
+         "常识事实不应出现在知识调度"),
+        ("知识引用不存在的事实",
+         lambda u: u.knowledge[u.protagonist].append(
+             {"fact_id": "NO-SUCH", "learned_chapter": 2}),
+         "引用不存在的事实"),
+        ("知识章号越界",
+         lambda u: u.knowledge[u.protagonist].append(
+             {"fact_id": u.truth_table[0]["id"], "learned_chapter": 999}),
+         "学习章号越界"),
+        ("提前获知终局真相",
+         lambda u: [e for e in u.knowledge[u.protagonist]
+                    if e["fact_id"] == u.terminal_fact_id][0]
+                   .__setitem__("learned_chapter", 1),
+         "提前获知终局"),
+        ("无 held-out 事实", _mutate_no_held_out(), "无 held-out 事实"),
+        ("死者死后获知事实",
+         lambda u: (lambda d: u.knowledge[d].append(
+             {"fact_id": u.terminal_fact_id, "learned_chapter": u.chapters}))(
+             next(c for sp in u.specs
+                  for c in (sp.get("state_delta") or {}).get("deaths", []))),
+         "死后仍获知"),
+    ]
+    for label, mutate, expect in cases:
+        u = fresh()
+        mutate(u)
+        bad = invariants(u)
+        check(f"阴性对照可失败: {label}", any(expect in b for b in bad))
+
+    # 未改动的宇宙必须自洽（避免上面那些 lambda 顺手把正常路径也弄坏）
+    check("未改动宇宙仍自洽", invariants(fresh()) == [])
+
+
 # ── 落盘 ↔ 解析往返 ───────────────────────────────────────────────────
 
 def test_persistence_roundtrip():
@@ -226,6 +307,7 @@ if __name__ == "__main__":
     test_arc_structure()
     test_knowledge_soundness()
     test_invariants()
+    test_every_invariant_can_fail()
     test_persistence_roundtrip()
     test_integration_positive()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")

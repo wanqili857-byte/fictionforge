@@ -96,7 +96,7 @@
 | 3 | 跨模型族一致 | 🔴 | `bench/calib/real_text.py` | 「真实散文零误报」是空测（探针名不在语料中） | 补**三项对照**：中性注入（增量必 0）/ 正对照（把语料里真实出场的角色声明为死者，判据必须开火）/ 可测性标注（不可测时标 n/a）；文档把结论降级为「召回与豁免有证据，真实负载误报率未测」 | `grep -q 'def positive_control' bench/calib/real_text.py && python3 tests/test_calib.py` | ✅ |
 | 4 | 跨模型族一致 | 🟠 | `bench/runner/batch.py` | 截断但非空的章节被当完整章（glm mid ch5 仅 146 字） | 生成结果带 `finish_reason`；`length` 截断章记错误不落盘；glm max_tokens → 65536 | `grep -q 'finish_reason' bench/runner/batch.py && grep -q 'truncated' bench/runner/llm.py` | ✅ |
 | 5 | 跨模型族一致 | 🟠 | `bench/report/metrics.py` | 门禁配对测量未套用汇总剔除规则 | `gate_contribution` 接 `expected_chapters` 并跳过未完成/缺判决 | `grep -q 'def gate_contribution(runs: dict, expected_chapters' bench/report/metrics.py` | ✅ |
-| 6 | 跨模型族一致 | 🟠 | `bench/universe/generator.py` | ≥3 条不变量对输出恒真（同源比较） | 反推校验改为对独立重算的期望值比较，并补阴性对照 | `grep -q 'def _expected_reveal_chapter' bench/universe/generator.py` | ⬜ |
+| 6 | 跨模型族一致 | 🟠 | `bench/universe/generator.py` | ≥3 条不变量对输出恒真（同源比较） | 不变量在 docstring 里**分成两类**（语义检查 / 构造保证回归检查，后者在 generate() 内不可能失败）；为**每条**补阴性对照证明它会红；时间线/物品判据的「无正例」写明是宇宙不产生该情形，召回由直接单测覆盖 | `python3 tests/test_universe.py` | ✅ |
 | 7 | 跨模型族一致 | 🟠 | `docs/canonbench-results-v2.md`、`README.md` | 「跨两期复现」表述过强（v1 是密度口径翻转、绝对数是好的） | 改为「v2 两口径同向；v1 仅密度口径」 | `! grep -q '跨两期跑批复现' README.md docs/canonbench-results-v2.md` | ⬜ |
 | 8 | 跨模型族一致 | 🟡 | `docs/BENCH_PROTOCOL.md`、`canonbench-writeup.md` | 复现协议首条命令分支不存在；报表路径被 gitignore | 分支名改 `main`；报表路径改 `bench/results/v2/report.md` | `grep -q 'bench/results/v2/report.md' docs/canonbench-results-v2.md && ! grep -rq 'checkout feat/canonbench' docs/` | ⬜ |
 | 9 | 含交叉 · 中置信 | 🟡 | `bench/report/metrics.py`、`html.py` | 榜单只给密度，与自家协议「绝对数成对」相抵触 | 榜单加绝对违反数列 | `python3 -m bench.report.metrics bench/results/v2 | grep -qE '名次.*绝对'` | ⬜ |
