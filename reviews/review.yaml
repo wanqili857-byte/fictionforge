@@ -17,7 +17,7 @@ repo: ..                        # 相对本文件 → 仓库根
 brief: brief.md
 out_dir: out
 ledger: dispose.md
-sources: ["bench", "docs", "tests", "README.md", "CHANGELOG.md", ".github"]
+sources: ["bench", "docs", "tests", "reviews", "README.md", "CHANGELOG.md", ".github"]
 snapshot_exclude: ["reviews/out", "runs", ".venv", "__pycache__"]
 
 channels:
@@ -25,6 +25,10 @@ channels:
   ark-kimi:
     kind: claude-cli
     model: kimi-k2.7-code
+    # 第二轮起放行**本地只读命令**：上一轮两家被权限白名单挡住（python3 -c/-m 被拒），
+    # 工单要求的可执行验证一条没跑成，最强的一类发现（自己复算）全没拿到。
+    # 白名单之外的工具在 -p 模式下直接拒绝，不是弹窗询问——改不了任何文件。
+    args: ["--allowedTools", "Bash(python3:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(grep:*),Bash(rg:*),Bash(ls:*),Bash(wc:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sort:*),Bash(uniq:*),Bash(find:*),Bash(shasum:*),Read,Grep,Glob"]
     env:
       ANTHROPIC_BASE_URL: https://ark.cn-beijing.volces.com/api/coding
       ANTHROPIC_AUTH_TOKEN_FILE: ~/.config/ark_key
@@ -33,6 +37,7 @@ channels:
   ark-doubao:
     kind: claude-cli
     model: doubao-seed-2-1-pro-260915
+    args: ["--allowedTools", "Bash(python3:*),Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(grep:*),Bash(rg:*),Bash(ls:*),Bash(wc:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(sort:*),Bash(uniq:*),Bash(find:*),Bash(shasum:*),Read,Grep,Glob"]
     env:
       ANTHROPIC_BASE_URL: https://ark.cn-beijing.volces.com/api/coding
       ANTHROPIC_AUTH_TOKEN_FILE: ~/.config/ark_key
