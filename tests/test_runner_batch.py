@@ -235,6 +235,90 @@ def fake_judge(text, chapter):
     return out
 
 
+def test_call_model_transport_with_stub():
+    """网络层打桩：成功路径必须返回 dict，且 200+坏 body 的重试真的可达。
+
+    为什么必须有这组：此前「网络层不测」是约定，于是 `call_model` 在重构中
+    把解析块留在了 `break` 之后（死代码），成功时**隐式返回 None**——整条真跑批
+    路径从第一次成功调用起就崩，而全部单测照绿。约定留的盲区，用桩补上。
+    """
+    import types
+
+    class _Resp:
+        def __init__(self, status, payload=None, text=""):
+            self.status_code, self._payload, self.text = status, payload, text
+
+        def json(self):
+            if self._payload is None:
+                raise ValueError("Expecting value: line 1 column 1")
+
+            return self._payload
+
+    class _Session:
+        def __init__(self, seq):
+            self.seq, self.trust_env, self.posts = list(seq), True, []
+
+        def post(self, url, **kw):
+            self.posts.append(url)
+            item = self.seq.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+    ok = {"choices": [{"message": {"content": "正文"}}],
+          "usage": {"prompt_tokens": 10, "completion_tokens": 20}}
+    spec = models.get("ark-db-lite")
+    keys = {"ARK_API_KEY": "ark-test"}
+    real_requests = sys.modules.get("requests")
+    real_backoff = llm.RETRY_BACKOFF
+    llm.RETRY_BACKOFF = (0, 0)          # 测试里不退避
+    try:
+        # ① 成功路径：返回 dict（不是 None）
+        sess = _Session([_Resp(200, ok)])
+        sys.modules["requests"] = types.SimpleNamespace(Session=lambda: sess)
+        r = llm.call_model(spec, "SYS", "USER", keys=keys)
+        check("成功路径返回 dict", isinstance(r, dict) and r["text"] == "正文")
+        check("成功路径带 token 与成本", r["tokens_in"] == 10 and r["tokens_out"] == 20
+              and r["cost"] == 0.0 and r["error"] is None)
+        check("用的是方舟 coding 端点",
+              sess.posts and sess.posts[0].endswith("/api/coding/v3/chat/completions"))
+
+        # ② 200 + 坏 body：必须重试，且重试后能成功（这条曾是死代码）
+        sess2 = _Session([_Resp(200, None, "<html>gateway</html>"), _Resp(200, ok)])
+        sys.modules["requests"] = types.SimpleNamespace(Session=lambda: sess2)
+        r2 = llm.call_model(spec, "SYS", "USER", keys=keys)
+        check("200+坏 body 会重试并最终成功",
+              r2["error"] is None and r2["text"] == "正文" and len(sess2.posts) == 2)
+
+        # ③ 坏 body 一直坏：重试耗尽后报错（返回 dict，不崩）
+        sess3 = _Session([_Resp(200, None, "x")] * 3)
+        sys.modules["requests"] = types.SimpleNamespace(Session=lambda: sess3)
+        r3 = llm.call_model(spec, "SYS", "USER", keys=keys)
+        check("坏 body 耗尽重试后返回错误 dict",
+              isinstance(r3, dict) and r3["error"] and "ParseError" in r3["error"])
+        check("重试次数 = max_attempts", len(sess3.posts) == 3)
+
+        # ④ 402：硬错误立刻返回，不重试
+        sess4 = _Session([_Resp(402, None, "no credit")])
+        sys.modules["requests"] = types.SimpleNamespace(Session=lambda: sess4)
+        r4 = llm.call_model(spec, "SYS", "USER", keys=keys)
+        check("402 不重试且返回错误 dict",
+              isinstance(r4, dict) and "402" in (r4["error"] or "") and len(sess4.posts) == 1)
+
+        # ⑤ 缺 key：不起进程、直接报错
+        # 注意 keys={} 会被 `keys or load_keys()` 当成"没传"，转去读 ~/.env——
+        # 所以这里用非空但缺 ARK key 的字典
+        r5 = llm.call_model(spec, "SYS", "USER", keys={"OTHER": "x"})
+        check("缺 key 报错且不请求", r5["error"] and "缺少 key" in r5["error"]
+              and len(sess4.posts) == 1)
+    finally:
+        llm.RETRY_BACKOFF = real_backoff
+        if real_requests is not None:
+            sys.modules["requests"] = real_requests
+        else:
+            sys.modules.pop("requests", None)
+
+
 def test_matrix_and_layout():
     u = generate(seed=7, chapters=3)
     out = Path(tempfile.mkdtemp())
@@ -406,6 +490,7 @@ if __name__ == "__main__":
     test_dashscope_wiring()
     test_channel_gate_fails_fast()
     test_summary_records_billing()
+    test_call_model_transport_with_stub()
     test_matrix_and_layout()
     test_resume_skips_generation_and_keeps_cost()
     test_resume_skips_only_completed_runs()

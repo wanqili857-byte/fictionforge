@@ -61,20 +61,6 @@
       "note": ""
     },
     {
-      "probe_id": "state-dead-ch3",
-      "type": "state",
-      "detector": "mechanical",
-      "chapter": 3,
-      "severity": "high",
-      "evidence": {
-        "span": "老麦如今问的那些，原来也不是老麦先问的。",
-        "character": "老麦"
-      },
-      "run_id": "batch",
-      "confidence": 0.7,
-      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
-    },
-    {
       "probe_id": "cons-length-ch4",
       "type": "constraint",
       "detector": "mechanical",

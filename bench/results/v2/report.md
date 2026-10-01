@@ -16,21 +16,21 @@
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | ark-db-lite__bare__k0 | ark-db-lite | bare | 0 | 14410 | 16 | 12 | 8.33 | 4 | 10 | 2 | 0 | — | 订阅 |
 | ark-db-lite__full__k0 | ark-db-lite | full | 0 | 12928 | 2 | 0 | 0.0 | 2 | 0 | 0 | 0 | 4→2 | 订阅 |
-| ark-db-lite__mid__k0 | ark-db-lite | mid | 0 | 14186 | 10 | 7 | 4.93 | 3 | 4 | 0 | 3 | — | 订阅 |
+| ark-db-lite__mid__k0 | ark-db-lite | mid | 0 | 14186 | 7 | 4 | 2.82 | 3 | 4 | 0 | 0 | — | 订阅 |
 | ark-ds-flash__bare__k0 | ark-ds-flash | bare | 0 | 11692 | 8 | 5 | 4.28 | 3 | 5 | 0 | 0 | — | 订阅 |
 | ark-ds-flash__full__k0 | ark-ds-flash | full | 0 | 13565 | 3 | 1 | 0.74 | 2 | 0 | 1 | 0 | 7→3 | 订阅 |
 | ark-ds-flash__mid__k0 | ark-ds-flash | mid | 0 | 12072 | 3 | 2 | 1.66 | 1 | 2 | 0 | 0 | — | 订阅 |
 | ark-glm-flash__bare__k0 | ark-glm-flash | bare | 0 | 11905 | 3 | 3 | 2.52 | 0 | 3 | 0 | 0 | — | 订阅 |
 | ark-glm-flash__full__k0 | ark-glm-flash | full | 0 | 7241 | 4 | 0 | 0.0 | 4 | 0 | 0 | 0 | 6→4 | 订阅 |
-| ark-glm-flash__mid__k0 | ark-glm-flash | mid | 0 | 8725 | 8 | 4 | 4.58 | 4 | 3 | 0 | 1 | — | 订阅 |
+| ark-glm-flash__mid__k0 | ark-glm-flash | mid | 0 | 8725 | 7 | 3 | 3.44 | 4 | 3 | 0 | 0 | — | 订阅 |
 
 ## 按模型汇总（三档归因，核心违反率）
 
 | 模型 | bare | mid | full | 上下文工程(bare→mid) | 合计(bare→full) | 平均成本$ |
 |---|---|---|---|---|---|---|
-| ark-db-lite | 8.33 | 4.93 | 0.0 | 3.4 | 8.33 | 订阅 |
+| ark-db-lite | 8.33 | 2.82 | 0.0 | 5.51 | 8.33 | 订阅 |
 | ark-ds-flash | 4.28 | 1.66 | 0.74 | 2.62 | 3.54 | 订阅 |
-| ark-glm-flash | 2.52 | 4.58 | 0.0 | -2.06 | 2.52 | 订阅 |
+| ark-glm-flash | 2.52 | 3.44 | 0.0 | -0.92 | 2.52 | 订阅 |
 
 ## 门禁贡献（配对测量：同一次 full 运行内 修前核心 → 修后核心）
 
@@ -52,6 +52,6 @@
 
 | 名次 | 模型 | bare | mid | full | 计费 | 缺档 |
 |---|---|---|---|---|---|---|
-| 1 | ark-glm-flash | 2.52 | 4.58 | 0.0 | 订阅 | — |
+| 1 | ark-glm-flash | 2.52 | 3.44 | 0.0 | 订阅 | — |
 | 2 | ark-ds-flash | 4.28 | 1.66 | 0.74 | 订阅 | — |
-| 3 | ark-db-lite | 8.33 | 4.93 | 0.0 | 订阅 | — |
+| 3 | ark-db-lite | 8.33 | 2.82 | 0.0 | 订阅 | — |

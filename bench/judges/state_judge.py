@@ -39,6 +39,10 @@ _VIOL_CH_RE = re.compile(r"第(\d+)章")
 _MEMORIAL_RE = re.compile(
     r"名册|名[字单]|流水册|日志|日记|字迹|笔迹|遗[物言迹]|照片|画像|碑|"
     r"写下|写着|刻着|记着|印着|画着|想起|记得|回忆|生前|尸体|坟")
+# 名字**前面**的谓语只有「存现/位移」类才算死者在行动（「门口站着老周」
+# 「出现老周的身影」）。感知动词不算：「三年前看着老麦被雾吞掉」里老麦是
+# 被看的宾语，不是行动者（出厂产物里的另一条误报）。
+_PRE_AGENT_RE = re.compile(r"(?:站|坐|蹲|躺|靠|趴)着|出现|走来|跑过来|走进")
 _ACTIVITY_VERBS = ("走", "跑", "站", "坐", "蹲", "躺", "靠", "拿", "抓", "攥",
                    "握", "推", "拉", "举", "抬", "冲", "退", "追", "递", "塞",
                    "伸手", "开口", "说话", "喊", "笑", "哭", "点头", "摇头",
@@ -100,15 +104,38 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                     if idx < 0:
                         continue
                     pre = sent[max(0, idx - 4):idx]      # 显形动词可在名字前：出现老周
-                    tail = sent[idx + len(name): idx + len(name) + 6]
+                    tail = sent[idx + len(name): idx + len(name) + 8]
+                    # 先截到小句边界：否则窗口会跨进下一小句，把别人的动作算到死者头上
+                    # （「老周走过的路，柳娘走过的路」里第二个「走」是柳娘的）。
+                    # 顿号不算边界——「老周、柳娘走进来」是真复活，动词属于整个并列主语。
+                    _cut = re.search(r"[，。；！？：]", tail)
+                    if _cut:
+                        tail = tail[:_cut.start()]
+                    # 定语从句的**中心语**：名字前是「的」——「站在跳板中间的老麦」
+                    if pre.endswith("的"):
+                        continue
                     if tail.startswith("的") and "身影" not in tail and "出现" not in pre:
                         continue                          # 领格：老麦的X
-                    if "出现" in pre or any(v in tail for v in _ACTIVITY_VERBS):
+                    # 活动动词后面若紧跟「的 / 过的 / 了的」，那是**关系从句**在修饰名词，
+                    # 不是死者在做动作：「老麦走过的路」「老麦走的那年」「老麦问的那些」。
+                    # 出厂产物里 4 条 state-dead 全是这一形态（评审 F2 揪出）。
+                    hit = False
+                    for m in re.finditer("|".join(re.escape(v) for v in _ACTIVITY_VERBS), tail):
+                        if re.match(r"(?:过|了)?的", tail[m.end():]):
+                            continue                      # 关系从句 → 不作数
+                        hit = True
+                        break
+                    # 动作也可以落在名字**前面**的谓语上（「门口站着老周」「出现老周的身影」）。
+                    # 这一条必须放在从句豁免之后：「看着老周走过的路」里 看着 是活的，
+                    # 但死者仍是关系从句的中心语，不该报。
+                    if not hit and _PRE_AGENT_RE.search(pre):
+                        hit = True
+                    if hit:
                         out.append(V("state-dead", Severity.HIGH,
                                      {"span": sent[:50], "character": name},
                                      confidence=0.7,
                                      note="死者名后出现活动动词"
-                                          "（遗物/回忆语境已豁免）"))
+                                          "（遗物/回忆/关系从句已豁免）"))
 
     # 2. 时间倒流：账本自身的时间线违规（只报本章及之前）
     for vtext in ledger.timeline_violations():

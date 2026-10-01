@@ -13,11 +13,11 @@
     "tokens_in": 6220,
     "tokens_out": 138923,
     "violations_post_fix": null,
-    "violations_pre_fix": 8
+    "violations_pre_fix": 7
   },
   "bench": {
     "bench_version": "0.1.0",
-    "judge_mechanical_version": "m0.3.0",
+    "judge_mechanical_version": "m0.4.0",
     "judge_semantic_model": "",
     "judge_semantic_prompt_version": "",
     "universe_generator_version": "u0.1.0",
@@ -37,7 +37,7 @@
     "tokens_in": 6220,
     "tokens_out": 138923
   },
-  "generated_at": "2026-10-01T13:16:34.307081+00:00",
+  "generated_at": "2026-10-01T14:31:31.468064+00:00",
   "harness": "mid",
   "k_index": 0,
   "max_tokens": 32768,

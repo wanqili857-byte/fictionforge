@@ -76,20 +76,6 @@
       "note": ""
     },
     {
-      "probe_id": "state-dead-ch4",
-      "type": "state",
-      "detector": "mechanical",
-      "chapter": 4,
-      "severity": "high",
-      "evidence": {
-        "span": "老麦走过的路，柳娘走过的路，现在她走的路，全串在同一只盐箱的木纹里。",
-        "character": "老麦"
-      },
-      "run_id": "batch",
-      "confidence": 0.7,
-      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
-    },
-    {
       "probe_id": "cons-forbidden-ch5",
       "type": "constraint",
       "detector": "mechanical",
@@ -103,34 +89,6 @@
       "run_id": "batch",
       "confidence": 1.0,
       "note": ""
-    },
-    {
-      "probe_id": "state-dead-ch5",
-      "type": "state",
-      "detector": "mechanical",
-      "chapter": 5,
-      "severity": "high",
-      "evidence": {
-        "span": "老麦走的那年，盐场的烟囱就再也没冒过烟。",
-        "character": "老麦"
-      },
-      "run_id": "batch",
-      "confidence": 0.7,
-      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
-    },
-    {
-      "probe_id": "state-dead-ch5",
-      "type": "state",
-      "detector": "mechanical",
-      "chapter": 5,
-      "severity": "high",
-      "evidence": {
-        "span": "她知道，接下来要走的路，和老麦、柳娘走过的，是同一条。",
-        "character": "老麦"
-      },
-      "run_id": "batch",
-      "confidence": 0.7,
-      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
     },
     {
       "probe_id": "cons-forbidden-ch6",

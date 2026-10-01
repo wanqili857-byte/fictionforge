@@ -125,9 +125,11 @@ def parse_response(payload: dict) -> dict:
 # 和思考型模型 ReadTimeout（240s 不够）都会把 run 打断——这两类不该终止跑批，
 # 退避重试即可；400/402（参数错/没余额）重试无意义，必须立刻浮出来。
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
-# 异常名按 type(e).__name__ 匹配（err 首段），requests 的超时家族各算各的名字
+# 异常名按 type(e).__name__ 匹配（err 首段），requests 的超时家族各算各的名字。
+# "ParseError" 不是异常名而是**我们自己给「200 + 坏 body」起的代号**——
+# 漏了它，那条支路就永远不重试（实测：坏 body 只发 1 次请求就返回）。
 RETRYABLE_EXC = {"Timeout", "ReadTimeout", "ConnectTimeout", "ConnectionError",
-                 "SSLError", "ProtocolError", "ReadError"}
+                 "SSLError", "ProtocolError", "ReadError", "ParseError"}
 RETRY_BACKOFF = (30, 90)     # 秒；第 1 次重试前睡 30，第 2 次前睡 90
 
 
@@ -181,21 +183,17 @@ def call_model(spec: ModelSpec, system: str, user: str,
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
         if status == 200:
-            break
-        if status == 200:
             try:
                 payload = r.json()
             except Exception as e:
                 # 网关偶尔返回 200 + 截断/HTML body——同属瞬态，按同一退避重试
-                err = f"ParseError: {type(e).__name__}: {e}"
-                status = None
-                exc_name = "ParseError"
-                if _should_retry(None, exc_name, attempt):
+                if _should_retry(None, "ParseError", attempt):
                     wait = RETRY_BACKOFF[min(attempt - 1, len(RETRY_BACKOFF) - 1)]
                     time.sleep(wait)
                     continue
                 return {"text": "", "tokens_in": 0, "tokens_out": 0,
-                        "error": err, "cost": 0.0, "proxy": px["source"]}
+                        "error": f"ParseError: {type(e).__name__}: {e}",
+                        "cost": 0.0, "proxy": px["source"]}
             out = parse_response(payload)
             out["cost"] = spec.cost(out["tokens_in"], out["tokens_out"])
             out["proxy"] = px["source"]

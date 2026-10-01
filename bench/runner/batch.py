@@ -36,7 +36,9 @@ from bench.judges.state_judge import state_judge
 BENCH_VERSION = "0.1.0"
 # m0.2.0：死人复活判据改正向证据制（遗物/回忆豁免 + 活动动词窗口），见 state_judge.py
 # m0.3.0：对话行改用 narration() 剥引文（旧实现整行跳过，吞掉行内引号后的旁白）
-JUDGE_MECHANICAL_VERSION = "m0.3.0"
+# m0.4.0：死者活动判据补三类豁免（定语从句中心语 / 关系从句 / 存现动词限定），
+#         并补「年前」类相对时间标记——修掉出厂产物里 4 条误报（评审 F2）
+JUDGE_MECHANICAL_VERSION = "m0.4.0"
 
 DEFAULT_PARA_MAX = 100
 DEFAULT_PRIOR_TAIL = 1200

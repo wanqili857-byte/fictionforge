@@ -51,7 +51,7 @@
       "tokens_in": 7750,
       "tokens_out": 60330,
       "violations_post_fix": null,
-      "violations_pre_fix": 10
+      "violations_pre_fix": 7
     },
     {
       "billing": "subscription",
@@ -147,7 +147,7 @@
       "tokens_in": 6220,
       "tokens_out": 138923,
       "violations_post_fix": null,
-      "violations_pre_fix": 8
+      "violations_pre_fix": 7
     }
   ]
 }
