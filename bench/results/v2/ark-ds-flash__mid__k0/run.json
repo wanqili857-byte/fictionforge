@@ -42,7 +42,7 @@
   "k_index": 0,
   "max_tokens": 8192,
   "model": "deepseek-v4-1-flash-260910",
-  "notes": "billing=subscription; proxy=policy:direct",
+  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:09:15.619848+00:00",
   "prompt_hashes": {
     "1": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d",
     "2": "b9c384ca20c15b660b87602e4279ab3e070eaba05acd1b53d8450077f915c63a",
