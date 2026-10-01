@@ -125,8 +125,35 @@ def test_soft_marker_scoped_to_action():
               f"{dead}当时蹲在这，摸着栈桥的木板。"):
         check(f"闪回不报: {s[:10]}", hits(s) == [])
     for s in (f"{dead}走进来，说起了当年的事。",
-              f"{dead}走进来，像往常一样把伞靠在门边。"):
-        check(f"名后标记不吞真复活: {s[:10]}", len(hits(s)) == 1)
+              f"{dead}走进来，像往常一样把伞靠在门边。",
+              # 前置状语小句：标记在前一句，不管辖名字那个小句
+              f"像往常一样，{dead}走过来把伞靠在门边。",
+              f"和当年一样，{dead}走过来把伞靠在门边。"):
+        check(f"名后/前句标记不吞真复活: {s[:12]}", len(hits(s)) == 1)
+
+
+def test_attributive_prefix_still_fires():
+    """名字**前面**带定语 ≠ 关系从句中心语——名字仍是动作主语，必须报。
+
+    第二轮 codex 报的漏报：`pre.endswith("的") → 整句豁免` 把「失踪已久的老麦
+    端着水走过来」也豁免了（同账本、同章号，「老麦端着水走过来」是 HIT）。
+    区别在动作在名字前还是名字后：名字后面的动作一律算数。
+    """
+    u, led, deaths = C.universe_state(seed=42, chapters=6)
+    dead = [n for n, c in deaths.items()][0]
+    ch = max(deaths.values()) + 1
+
+    def n_hits(s):
+        return len([v for v in state_judge(s, led, chapter=ch, run_id="t")
+                    if "dead" in v.probe_id])
+
+    check("名字前带定语的真动作仍报", n_hits(f"失踪已久的{dead}端着水走过来。") == 1)
+    check("裸名字的真动作仍报", n_hits(f"{dead}端着水走过来。") == 1)
+    # 反向：名字是关系从句的中心语、后面没有动作 → 不报
+    check("关系从句中心语仍豁免",
+          n_hits(f"就像三年前站在跳板中间的{dead}那样，雾又漫上来了。") == 0)
+    check("定语 + 无动作仍豁免",
+          n_hits(f"站起来挡在她前面的{dead}，肩胛骨绷得很紧。") == 0)
 
 
 def test_relation_clause_forms_exempt():
@@ -163,6 +190,7 @@ if __name__ == "__main__":
     test_differential_uses_counts_not_ids()
     test_past_dating_in_later_clause_is_hard()
     test_soft_marker_scoped_to_action()
+    test_attributive_prefix_still_fires()
     test_relation_clause_forms_exempt()
     test_real_corpus_if_present()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")

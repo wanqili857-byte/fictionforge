@@ -283,6 +283,10 @@ def summarize(result: dict) -> dict:
             # 有一部分只是构造决定的——读结论时必须看这一列。
             "baseline_evidence_n": ev,
             "needs_entity_in_corpus": p["needs_entity_in_corpus"],
+            # **分母说清楚**：每一类只注入**同一条**正例（`cons-pov` 两条），
+            # 在 N 段载体上各插一次。所以「100%」是「1 条刺激 × N 段载体」，
+            # 不是 N 次独立试验。第二轮 kimi+doubao 一致指出这里在把重复当样本量。
+            "stimuli": 2 if p.get("positive_extra") else 1,
         }
     # 「干净文本零命中」只在探针实体真的出现在语料里时才算证据（评审 F3）
     measurable = [r for r in result["rows"] if r["probe_entity_in_corpus"]]
@@ -331,14 +335,15 @@ def render_markdown(summary: dict, result: dict, corpus_label: str) -> str:
          "> 措辞订正：不写成「两句只差一个词」——那只对天数那一对成立。"
          "死人复活那一对差的是谓语类型（活动 vs 遗物指称），长度也不同。"
          "保证来自「同载体、同位置、同插入长度」，不是来自字面相似。", "",
-         "| 判据 | 测什么 | 召回（正例被抓） | 特异性（诱饵未误报） | 基线是证据的文本 |",
+         "| 判据 | 测什么 | 召回（正例被抓） | 特异性（诱饵未误报） | 基线是证据的文本 | 刺激条数 × 载体 |",
          "|---|---|---|---|---|"]
     for k, v in summary["kinds"].items():
         spec = "—（该类无诱饵）" if v["specificity"] is None else f"{v['specificity']:.0%}"
         ev = v.get("baseline_evidence_n")
         evt = "—" if ev is None else (f"{ev}/{v['n']}" if v.get("needs_entity_in_corpus")
                                       else f"{v['n']}/{v['n']}")
-        L.append(f"| `{k}` | {v['what']} | {v['recall']:.0%} | {spec} | {evt} |")
+        L.append(f"| `{k}` | {v['what']} | {v['recall']:.0%} | {spec} | {evt} | "
+                 f"{v.get('stimuli', 1)} × {v['n']} |")
     L += ["", "真实文本自身的固有命中（未经任何注入）：", "",
           "| 判据 | 固有命中 | 说明 |", "|---|---|---|"]
     for k, n in summary["clean_by_kind"].items():

@@ -21,12 +21,21 @@
    绝对天数比对锚点。这是刻意的：中文叙事里「第三天」通常就是故事第 3 天，
    全豁免会把天数倒退检测削掉；「又过了两天，第三天…」这类真相对表达会误报
    一条 conf 0.8、带 span 的候选，交人工复核。
-2. 比喻/传闻标记（像/仿佛/听说）会整句豁免死人活动判据——「老周走过来，
-   **像**往常一样把水递给她」这类真复活会漏报。试过收窄（把这些标记从豁免
-   集合里去掉），实测代价更大：db-lite mid 一章就新增 4 条误报
-   （「**就像**三年前站在跳板中间的老麦」「老麦**走过**的路」「老麦**走**的那年」
-   ——全是比喻框与定语从句），真阳性 0 条。**误报 4 : 真阳性 0，收窄不划算**，
-   故保留宽豁免，把漏报形态记在这里。这就是 Kappa 校准（W5）要量的东西。
+2. ~~比喻/传闻标记（像/仿佛/听说）会整句豁免死人活动判据，故保留宽豁免。~~
+   **这条取舍在 m0.5.0 已被推翻，原文保留以示订正**：当年写的是「试过收窄，
+   代价更大：db-lite mid 一章新增 4 条误报（就像三年前站在跳板中间的老麦 /
+   老麦走过的路 / 老麦走的那年），真阳性 0 —— 误报 4 : 真阳性 0，收窄不划算」。
+   但**那 4 条误报后来由关系从句豁免独立修掉了**（m0.4.0/m0.5.0），取舍依据早就失效，
+   作者没有重测。第二轮外部评审（doubao + codex）各自做了同一个实验：把
+   像/仿佛/好像/听说/据说/传说 从标记表里去掉，对 9 个 run 重判 → **新增误报 0 条**。
+   现在的规则不是「宽豁免」，而是**按管辖范围判**：
+   - 硬标记（想起/听说/梦见/三年前…）无条件豁免整句
+   - 软标记（当时/当年/像/以前…）只豁免**它管辖的那个小句里的那个动作**，
+     且必须与名字**同小句**——「像往常一样，老麦走过来」里 像 只管前一句，是真复活；
+     「就像三年前站在跳板中间的老麦那样」里名字就在比喻框内，豁免
+   度量：入库语料上 7 种正例句式 297/297 命中、8 种孪生负例 0/297 误报
+   （`python3 -m bench.calib.corpus_control bench/results/v2`）。
+   **这条是「自认的边界」被外部评审证伪的第二次**——第一次是校准的「零误报」空测。
 """
 
 import re
@@ -121,7 +130,14 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                     # 只比「标记 vs 名字」是不够的：上面三个豁免例里有两个的标记在名字**之后**
                     # （老麦当年…／老麦当时蹲在这），那两条会变成真实语料上的误报
                     # （入库语料实测 3 条，见 bench/calib/corpus_control.py 的 clean_hits）。
-                    if 0 <= soft_at < idx:
+                    # 软标记（时间副词/比喻词）豁免的是**它管辖的那个动作**。
+                    # 判法两层：① 标记必须与名字**同一个小句**——「像往常一样，
+                    # 老麦走过来把伞靠在门边」里 像 只管前一句，老麦在当下走动，
+                    # 是真复活；② 同小句内还要在**动作之前**（下面的 vpos 比较）。
+                    # 反面：「就像三年前站在跳板中间的老麦那样」标记与名字同句，
+                    # 名字是比喻框里的中心语 → 豁免。
+                    _clause_start = max([sent.rfind(c, 0, idx) for c in "，。；！？："] + [-1]) + 1
+                    if _clause_start <= soft_at < idx:
                         continue
                     pre = sent[max(0, idx - 4):idx]      # 显形动词可在名字前：出现老周
                     tail = sent[idx + len(name): idx + len(name) + 8]
@@ -131,9 +147,11 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                     _cut = re.search(r"[，。；！？：]", tail)
                     if _cut:
                         tail = tail[:_cut.start()]
-                    # 定语从句的**中心语**：名字前是「的」——「站在跳板中间的老麦」
-                    if pre.endswith("的"):
-                        continue
+                    # 定语从句的**中心语**：名字前是「的」——「站在跳板中间的老麦」。
+                    # 但这条**只该管名字前面那个谓语**，不能连名字后面的动作一起豁免：
+                    # 「失踪已久的老麦端着水走过来」里老麦确实是行动者（第二轮 codex 报的漏报，
+                    # 实测 HIT/MISS 只差名字前那句定语）。所以判断下沉到 pre-agent 分支。
+                    relative_head = pre.endswith("的")
                     if tail.startswith("的") and "身影" not in tail and "出现" not in pre:
                         continue                          # 领格：老麦的X
                     # 关系从句：动词后面紧跟「的」或「<补语>的」，说明这个动词在修饰
@@ -144,8 +162,10 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                     hit = False
                     for m in re.finditer("|".join(re.escape(v) for v in _ACTIVITY_VERBS), tail):
                         vpos = idx + len(name) + m.start()
-                        if 0 <= soft_at < vpos:
+                        if _clause_start <= soft_at < vpos:
                             continue                      # 软标记管辖这个动作 → 闪回/比喻
+                        # 下界必须是**小句起点**：否则「像往常一样，老麦走过来」里
+                        # 前一句的 像 会被当成在管辖后一句的 走（实测漏报）。
                         if re.match(r"(?:[着过了]|[进出到完起开回上下得]{1,2})?的",
                                     tail[m.end():]):
                             continue                      # 关系从句 → 不作数
@@ -155,7 +175,7 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                     # 这一条必须放在从句豁免之后：「看着老周走过的路」里 看着 是活的，
                     # 但死者仍是关系从句的中心语，不该报。
                     pre_m = _PRE_AGENT_RE.search(pre)
-                    if not hit and pre_m:
+                    if not hit and pre_m and not relative_head:
                         ppos = max(0, idx - 4) + pre_m.start()
                         if not (0 <= soft_at < ppos):
                             hit = True

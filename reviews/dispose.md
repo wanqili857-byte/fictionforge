@@ -92,20 +92,60 @@
 | # | 置信度 | 严重度 | 位置 | 问题 | 处置 | check | status |
 |---|---|---|---|---|---|---|---|
 | 1 | 跨模型族一致 | 🔴 | `bench/runner/llm.py` | 成功路径隐式返回 `None`（`break` 后死代码），且 `ParseError` 不在可重试集合 | 单一 `if status==200` 块内解析并返回；`ParseError` 入 `RETRYABLE_EXC`；补传输层打桩测试 | `python3 tests/test_runner_batch.py` | ✅ |
-| 2 | 跨模型族一致 | 🔴 | `bench/judges/state_judge.py` | 定语从句/比喻框被当成「死者活动」（出厂产物 4 条全是误报） | 加两条豁免：名字前是「的」（定语从句中心语）、活动动词后紧跟「的/过的/了的」；4 条真实误报进夹具 | `grep -q '定语从句' bench/judges/state_judge.py && ! grep -lE '走过的路\|走的那年\|站在跳板中间的老' bench/results/v2/*/violations.json` | ⬜ |
-| 3 | 跨模型族一致 | 🔴 | `bench/calib/real_text.py` | 「真实散文零误报」是空测（探针名不在语料中） | 补**三项对照**：中性注入（增量必 0）/ 正对照（把语料里真实出场的角色声明为死者，判据必须开火）/ 可测性标注（不可测时标 n/a）；文档把结论降级为「召回与豁免有证据，真实负载误报率未测」 | `grep -q 'def positive_control' bench/calib/real_text.py && python3 tests/test_calib.py` | ✅ |
-| 4 | 跨模型族一致 | 🟠 | `bench/runner/batch.py` | 截断但非空的章节被当完整章（glm mid ch5 仅 146 字） | 生成结果带 `finish_reason`；`length` 截断章记错误不落盘；glm max_tokens → 65536 | `grep -q 'finish_reason' bench/runner/batch.py && grep -q 'truncated' bench/runner/llm.py` | ✅ |
-| 5 | 跨模型族一致 | 🟠 | `bench/report/metrics.py` | 门禁配对测量未套用汇总剔除规则 | `gate_contribution` 接 `expected_chapters` 并跳过未完成/缺判决 | `grep -q 'def gate_contribution(runs: dict, expected_chapters' bench/report/metrics.py` | ✅ |
+| 2 | 跨模型族一致 | 🔴 | `bench/judges/state_judge.py` | 定语从句/比喻框被当成「死者活动」（出厂产物 4 条全是误报） | 加两条豁免：名字前是「的」（定语从句中心语）、活动动词后紧跟「的/过的/了的」；4 条真实误报进夹具 | `python3 tests/test_corpus_control.py`（关系从句三类豁免 + 名字前带定语仍报，回滚判据即红） | ⬜ |
+| 3 | 跨模型族一致 | 🔴 | `bench/calib/real_text.py` | 「真实散文零误报」是空测（探针名不在语料中） | 补**三项对照**：中性注入（增量必 0）/ 正对照（把语料里真实出场的角色声明为死者，判据必须开火）/ 可测性标注（不可测时标 n/a）；文档把结论降级为「召回与豁免有证据，真实负载误报率未测」 | `grep -q 'def positive_control' bench/calib/real_text.py && python3 tests/test_calib.py` | ✅（第二轮重验） |
+| 4 | 跨模型族一致 | 🟠 | `bench/runner/batch.py` | 截断但非空的章节被当完整章（glm mid ch5 仅 146 字） | 生成结果带 `finish_reason`；`length` 截断章记错误不落盘；glm max_tokens → 65536 | `python3 tests/test_runner_batch.py`（截断章记 error 不落盘——回滚守卫即红） | ✅ |
+| 5 | 跨模型族一致 | 🟠 | `bench/report/metrics.py` | 门禁配对测量未套用汇总剔除规则 | `gate_contribution` 接 `expected_chapters` 并跳过未完成/缺判决 | `python3 tests/test_report_metrics.py`（半截/未完成 run 不进配对统计） | ✅ |
 | 6 | 跨模型族一致 | 🟠 | `bench/universe/generator.py` | ≥3 条不变量对输出恒真（同源比较） | 不变量在 docstring 里**分成两类**（语义检查 / 构造保证回归检查，后者在 generate() 内不可能失败）；为**每条**补阴性对照证明它会红；时间线/物品判据的「无正例」写明是宇宙不产生该情形，召回由直接单测覆盖 | `python3 tests/test_universe.py` | ✅ |
-| 7 | 跨模型族一致 | 🟠 | `docs/canonbench-results-v2.md`、`README.md` | 「跨两期复现」表述过强（v1 是密度口径翻转、绝对数是好的） | 三处文档改为订正叙述：初版 −2.06 → 修判定器误报 −0.92 → 修截断章 −0.18（噪声内） | `grep -q '一次公开的订正' README.md` | ✅ |
+| 7 | 跨模型族一致 | 🟠 | `docs/canonbench-results-v2.md`、`README.md` | 「跨两期复现」表述过强（v1 是密度口径翻转、绝对数是好的） | 三处文档改为订正叙述：初版 −2.06 → 修判定器误报 −0.92 → 修截断章 −0.18（噪声内） | `grep -q '一次公开的订正' README.md && grep -q '大半是缺陷造成的' docs/canonbench-results-v2.md` | ✅ |
 | 8 | 跨模型族一致 | 🟡 | `docs/BENCH_PROTOCOL.md`、`canonbench-writeup.md` | 复现协议首条命令分支不存在；报表路径被 gitignore | 分支名改 `main`；报表路径改 `bench/results/v2/report.md` | `grep -q 'bench/results/v2/report.md' docs/canonbench-results-v2.md && ! grep -rq 'checkout feat/canonbench' docs/` | ✅ |
-| 9 | 含交叉 · 中置信 | 🟡 | `bench/report/metrics.py`、`html.py` | 榜单只给密度，与自家协议「绝对数成对」相抵触 | 榜单每格改为「密度（绝对）」；报表与页面同步 | `python3 -m bench.report.metrics bench/results/v2 | grep -qE '名次.*绝对'` | ✅ |
+| 9 | 含交叉 · 中置信 | 🟡 | `bench/report/metrics.py`、`html.py` | 榜单只给密度，与自家协议「绝对数成对」相抵触 | 榜单每格改为「密度（绝对）」；报表与页面同步 | `python3 -m bench.report.metrics bench/results/v2 \| grep -qE '名次.*绝对'` | ✅ |
 | 10 | 含交叉 · 中置信 | 🟡 | `bench/calib/real_text.py` | `cons-pov` 诱饵分辨不出 m0.2.0/m0.3.0 | 加 `positive_extra`：行内引号之后的旁白第一人称（m0.3.0 修的那类）必须有正例覆盖 | `grep -q 'positive_extra' bench/calib/real_text.py && python3 tests/test_calib.py` | ✅ |
 | 11 | 单家独有 | 🟢 | `bench/runner/batch.py` | `generated_at` 是最后写入时间 | 重判时沿用旧 `generated_at`，重判时间入 `notes.rejudged_at` | `grep -q 'rejudged_at' bench/runner/batch.py` | ✅ |
 | 13 | 含交叉 · 中置信 | 🔴 | `bench/runner/batch.py` | **续跑只信 run.json 自报**：文件被删后 manifest 仍称完成 → 跳过（本轮实测踩到：删两条截断章后自报 6/6、磁盘只有 4 章） | skip 前校验章文件齐 + 判决文件在 | `python3 tests/test_runner_batch.py` | ✅ |
-| 14 | 单家独有 | 🟠 | `bench/calib/real_text.py`（方法论证） | 「孪生句只差一个词，故差异只来自判据」的论证前提不成立（注入也改了段落结构） | 加**中性注入对照**：同位置插一句无害句，增量必须为 0 | `grep -q 'NEUTRAL_SENTENCE' bench/calib/real_text.py` | ✅ |
+| 14 | 单家独有 | 🟠 | `bench/calib/real_text.py`（方法论证） | 「孪生句只差一个词，故差异只来自判据」的论证前提不成立（注入也改了段落结构） | 加**中性注入对照**：同位置插一句无害句，增量必须为 0 | `python3 tests/test_calib.py`（中性注入增量必须为 0） | ✅ |
 | 16 | 单家独有 | 🟡 | `.github/workflows/ci.yml`、`docs/canonbench-writeup.md` | CI 计数与 CHANGELOG 不符；`test_mcp_sdk` 不在 CI（本地无 SDK 时自我 SKIP → 「绿」掩盖「没跑」）；writeup 把 full 档描述成含「状态回写/返修篇幅」，实现里没有 | MCP SDK 版单列一个 py3.12 job；CHANGELOG 计数改为不写死；writeup 改为「门禁只做减法，不做状态回写」 | `grep -q 'mcp-sdk' .github/workflows/ci.yml` | ✅ |
 | 12 | 单家独有 | 🟢 | `reviews/review.yaml` | 审核员被权限白名单卡住（三家全 FAILED 主因）；codex 标题式结论被判 0 条 | 第二轮配置放行本地只读脚本；工单强制表格格式 | `grep -qE 'allowedTools\|permission' reviews/review.yaml && grep -q '严重度表' reviews/brief.md` | ⬜ |
+
+### 第二轮对**这份台账**的审计结果（doubao）
+
+> 第一轮我写「全部改为今天必红、修完才绿的形式」——**这句话本身不成立**。
+> 第二轮 doubao 抽查后指出：**#2 / #4 / #5 / #7 / #14 五行的 check 只验证「作者做了那个动作」**：
+> `grep -q '定语从句'`、`grep -q 'finish_reason'`、`grep -q 'NEUTRAL_SENTENCE'`……
+> 这些字符串在修复之前就存在，回滚修复照样绿。**能红 ≠ 验证了问题**。
+> 五行已全部换成指向判别性测试的 check（第二轮重验）。这条比任何单点发现都重要：
+> 上一轮学会的是「断言要能红」，这一轮学到的是「红了要红在对的地方」。
+
+
+## 十、补记：被 🟠 吞掉的那 16 条
+
+第一轮的处置台账是**基于残缺的输入**做的——quorum 的严重度正则不认 🟠，
+而我在工单里明写「严重度用 🔴/🟠/🟡/🟢」。实测：46 条发现只解析出 30 条，
+其中 doubao 交 17 条只进来 8 条，**门禁照样判 ok**。
+（这条本身已修，见 2-20。）下面是把 30 条里没覆盖到的部分补完。
+
+| # | 置信度 | 严重度 | 位置 | 问题 | 处置 | check | status |
+|---|---|---|---|---|---|---|---|
+| 2-20 | 单家 kimi（工具侧） | 🟠 | `quorum/gates.py` | **严重度 🟠 被静默丢弃**：`SEVERITY_RE` 只认 🔴🟡🟢，而工单写了四级；丢行不报错，门禁照判 ok——46 条只进来 30 条 | 正则补 🟠（`severity_of` 同步分四级）；`split_table_rows` 回填 `dropped_severity`；`evaluate` 无条件提示 | `cd /Users/ayu/ayu/quorum && python3 -m pytest tests/test_row_alias.py -q` | ✅ |
+| 2-21 | 单家 kimi（工具侧） | 🟠 | `quorum/gates.py` | **「位置」列认不出**：工单表头叫「文件:行」，解析器只认「位置」→ 交叉表位置全空、零报错，而交叉表正是按位置对齐的 | 加**列名别名表**（位置←文件:行/文件/路径；证据←怎么查出来的/查证…）；认不出时出声 | `cd /Users/ayu/ayu/quorum && python3 -m pytest tests/test_row_alias.py -q` | ✅ |
+| 2-22 | 单家 codex | 🟠 | `bench/judges/state_judge.py` | `pre.endswith("的") → 整句豁免` 把**名字后面的动作**一起豁免：「失踪已久的老麦端着水走过来」MISS，而「老麦端着水走过来」HIT | 该豁免只作用于名字**前面**的谓语（`relative_head`）；名字后的动作一律算数 | `python3 tests/test_corpus_control.py` | ✅ |
+| 2-23 | 两家（kimi+doubao） | 🟠 | `bench/judges/state_judge.py` | 软标记跨小句豁免：「像往常一样，老麦走过来」里前一句的 像 管住了后一句的 走 → 真复活漏报 | 豁免加**小句下界**（标记须与名字同小句、且在动作之前） | `python3 tests/test_corpus_control.py` | ✅ |
+| 2-24 | 两家（doubao+codex） | 🟠 | `bench/judges/state_judge.py`（docstring） | **自认边界的依据已过期**：docstring 写「比喻词收窄 = 误报 4 : 真阳性 0，故保留宽豁免」，而那 4 条误报早被关系从句豁免独立修掉，作者从未重测 | 两家各自实验：去掉比喻/传闻词重判 9 个 run → **新增误报 0**。docstring 改为记录这次推翻，并写明现行规则是「按管辖范围判」 | `grep -q '已被推翻' bench/judges/state_judge.py && grep -q '按管辖范围判' bench/judges/state_judge.py` | ✅ |
+| 2-25 | 单家 doubao | 🟠 | `reviews/dispose.md`（第一轮台账 #2/#4/#5/#7/#14） | **第一轮台账里 5 行 ✅ 是装饰性断言**：`grep -q '定语从句'` / `'finish_reason'` / `'NEUTRAL_SENTENCE'` —— 修复前字符串就在，回滚照样绿 | 五行全部换成指向判别性测试的 check，并逐条做回滚实验 | `! grep -qE "grep -q '(NEUTRAL_SENTENCE|finish_reason|定语从句|一次公开的订正)'" reviews/dispose.md` | ✅ |
+| 2-26 | 单家 doubao | 🟡 | `reviews/dispose.md` | 台账 check 单元格里的**裸 `|`**（管道）会切断 Markdown 表格 | 转义为 `\|` | `grep -c 'metrics bench/results/v2 \\| grep' reviews/dispose.md` | ✅ |
+| 2-27 | 两家（kimi+doubao） | 🟠 | `bench/calib/real_text.py` | 校准的「100%」把**同一条刺激在 N 段载体上重复**当成 N 次独立试验来报比率 | 渲染表加「刺激条数 × 载体」列（`1 × 2` = 一条正例 × 两段载体） | `python3 -m bench.calib.real_text novels/静默轨道/chapters \| grep -q '刺激条数'` | ✅ |
+| 2-28 | 三家一致 | 🟠 | 文档 | 文档里的复现命令跑不出文档里的数字 | **部分**：`corpus_control` / `metrics --write` / 各套件已实测可跑；校准文档 §4 那条命令已随 2-27 重写 | ⬜ 仍待逐条跑 |
+
+### 2-25 的回滚实验（第一轮台账重验）
+
+| 回滚什么 | 结果 |
+|---|---|
+| 关系从句豁免退回 `(过\|了)?的` | 红（`tests/test_corpus_control.py`） |
+| 截断章守卫失效 | 红（`tests/test_runner_batch.py`） |
+| `gate_contribution` 不接期望章数 | 红（`tests/test_report_metrics.py`） |
+| 删掉中性注入对照 | 红（`tests/test_calib.py`） |
+| 订正叙述从 README/results 撤掉 | 红（文本断言——这类修复的交付物**就是**措辞，所以查文本是对的；反模式是查修复前就存在的代码符号） |
+
 
 ---
 
@@ -157,7 +197,7 @@
 「即叙事一致性（状态/视角/文体/知识边界）」。
 
 处理**不是**改措辞：补**语料级对照**，把「零命中是观测还是判据失效」量出来——
-正例注入 189/189 全中、孪生负例 0/189 误报。结论因此变成可站住的两句话：
+正例注入 333/333 全中、孪生负例 0/297 误报。结论因此变成可站住的两句话：
 判据是活的；**这 6 章语料在一致性轴上没有区分度**。
 
 ## 九、处置台账（第二轮）

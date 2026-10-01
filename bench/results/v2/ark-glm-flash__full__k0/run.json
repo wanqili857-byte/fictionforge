@@ -17,7 +17,7 @@
   },
   "bench": {
     "bench_version": "0.1.0",
-    "judge_mechanical_version": "m0.5.0",
+    "judge_mechanical_version": "m0.5.1",
     "judge_semantic_model": "",
     "judge_semantic_prompt_version": "",
     "universe_generator_version": "u0.1.0",
@@ -42,7 +42,7 @@
   "k_index": 0,
   "max_tokens": 65536,
   "model": "glm-5-3-flash-260828",
-  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:53:59.622167+00:00",
+  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T16:20:30.957648+00:00",
   "prompt_hashes": {
     "1": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d",
     "2": "717c92f058655acd5aca392f305b0752cf73c32374eda50b6726c85a9c4d871f",

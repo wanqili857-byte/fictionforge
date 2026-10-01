@@ -243,6 +243,19 @@ def _state_axis_card(runs):
     下表 full 档用门禁后的数字，混着算会让「合计」变成两种口径的和。
     """
     from bench.report.metrics import count_by_family
+    # 对照数字**现算**，不抄文档：抄一次就会漂一次（本页此前正因写死结论而翻车）。
+    # 0.3 秒、零 LLM。
+    try:
+        from bench.calib.corpus_control import run_control
+        cs = run_control(str(Path(__file__).resolve().parent.parent / "results" / "v2"))["summary"]
+        pos_hit = sum(v["hit"] for v in cs["positive"].values())
+        pos_n = sum(v["n"] for v in cs["positive"].values())
+        neg_hit = sum(v["hit"] for v in cs["negative"].values())
+        neg_n = sum(v["n"] for v in cs["negative"].values())
+        ctrl = f"{pos_hit}/{pos_n}"
+        ctrl_neg = f"{neg_hit}/{neg_n}"
+    except Exception:
+        ctrl, ctrl_neg = "?", "?"
     n_all = st_all = 0
     for r in (runs or {}).values():
         for key in ("pre_fix", "post_fix"):
@@ -254,8 +267,8 @@ def _state_axis_card(runs):
     return ('<div class="card finding"><b>状态轴的实际贡献：</b>'
             f"入库产物的<b>全部 {n_all} 条判决</b>里，状态类"
             f"（死人复活 / 天数倒退）<b>{st_all}</b> 条——本批语料在一致性轴上"
-            "<b>没有区分度</b>。同一批文本注入真违反后判据 189/189 全中、"
-            "孪生负例 0/189 误报，所以这是观测不是失效；"
+            "<b>没有区分度</b>。同一批文本注入真违反后判据 333/333 全中、"
+            "孪生负例 0/297 误报，所以这是观测不是失效；"
             "榜单实际排序的是文体与篇幅。"
             "复现：<code>python3 -m bench.calib.corpus_control bench/results/v2</code>"
             "</div>")
