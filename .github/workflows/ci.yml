@@ -46,3 +46,7 @@ jobs:
         run: python tests/test_attacks.py
       - name: Unit tests — CanonBench MCP server (hand-rolled, zero deps)
         run: python tests/test_mcp_server.py
+      - name: Unit tests — CanonBench leaderboard page
+        run: python tests/test_report_html.py
+      - name: Unit tests — CanonBench real-text calibration
+        run: python tests/test_calib.py
