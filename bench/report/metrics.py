@@ -274,14 +274,18 @@ def aggregate_by_model(runs: dict, expected_chapters: int = None) -> list:
         core_rates, costs, per_tier, total_rates = {}, [], {}, {}
         billings = {r.get("billing", "per_token")
                     for rs in tiers.values() for r in rs}
+        core_abs_by_tier = {}
         for tier, rs in tiers.items():
-            cores, totals = [], []
+            cores, totals, abs_cores = [], [], []
             for r in rs:
                 used = (r["violations"].get("post_fix", []) if tier == "full"
                         else r["violations"].get("pre_fix", []))
                 s = summarize_run(used, r["chars"])
                 cores.append(s["core_per_10k"])
                 totals.append(s["violations_per_10k"])
+                abs_cores.append(s["core_abs"])
+            core_abs_by_tier[tier] = (round(sum(abs_cores) / len(abs_cores), 2)
+                                      if abs_cores else 0.0)
             per_tier[tier] = round(sum(cores) / len(cores), 2) if cores else 0.0
             total_rates[tier] = round(sum(totals) / len(totals), 2) if totals else 0.0
             costs += [r["cost"] for r in rs]
@@ -293,6 +297,7 @@ def aggregate_by_model(runs: dict, expected_chapters: int = None) -> list:
         out.append({
             "model": model,
             "core_rate_by_tier": per_tier,
+            "core_abs_by_tier": core_abs_by_tier,
             "total_rate_by_tier": total_rates,
             "attribution": att,
             "gate_paired": gate,
@@ -341,9 +346,12 @@ def leaderboard(agg: list, tiers=("bare", "mid", "full")) -> list:
         bare = rates.get("bare")
         if bare is None:
             continue
+        absr = a.get("core_abs_by_tier") or {}
         entries.append({
             "model": a["model"],
             "bare": bare, "mid": rates.get("mid"), "full": rates.get("full"),
+            "bare_abs": absr.get("bare"), "mid_abs": absr.get("mid"),
+            "full_abs": absr.get("full"),
             "billing": a.get("billing", "per_token"),
             "missing": [t for t in tiers if t not in rates],
         })
@@ -360,15 +368,21 @@ def leaderboard(agg: list, tiers=("bare", "mid", "full")) -> list:
 def render_leaderboard(ranked: list) -> str:
     lines = ["# CanonBench 榜单（核心违反率，升序 = 越一致）", "",
              "> 排序键 = bare 档核心违反率（裸能力）；并列同名次。",
+             "> **每格 = 密度（绝对违反数）**——密度可被加字稀释，绝对数不能，两者成对才不可刷",
+             "> （本项目自己的协议 §8-4 就要求成对，此前榜单只给了密度）。",
              "> `订阅`/`免费额度` = 零边际成本通道，成本列不可与按量行比钱数。",
              "> 缺档位 = 跑批未完成该档，数字照登但不可当完整行读。", "",
-             "| 名次 | 模型 | bare | mid | full | 计费 | 缺档 |",
+             "| 名次 | 模型 | 裸写 密度(绝对) | 注入上下文 密度(绝对) | 满配门禁 密度(绝对) | 计费 | 缺档 |",
              "|---|---|---|---|---|---|---|"]
     for e in ranked:
         miss = ",".join(e["missing"]) if e["missing"] else "—"
-        cell = lambda v: "—" if v is None else v
-        lines.append(f"| {e['rank']} | {e['model']} | {e['bare']} | "
-                     f"{cell(e.get('mid'))} | {cell(e.get('full'))} | "
+        def cell(v, ab=None):
+            if v is None:
+                return "—"
+            return f"{v}" if ab is None else f"{v}（{ab:g}）"
+        lines.append(f"| {e['rank']} | {e['model']} | {cell(e['bare'], e.get('bare_abs'))} | "
+                     f"{cell(e.get('mid'), e.get('mid_abs'))} | "
+                     f"{cell(e.get('full'), e.get('full_abs'))} | "
                      f"{_billing_label(e.get('billing', 'per_token'))} | {miss} |")
     return "\n".join(lines) + "\n"
 

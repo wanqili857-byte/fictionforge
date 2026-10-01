@@ -50,3 +50,18 @@ jobs:
         run: python tests/test_report_html.py
       - name: Unit tests — CanonBench real-text calibration
         run: python tests/test_calib.py
+
+  # MCP 官方 SDK 版单独一个 job：它需要 Python ≥3.10，而主 job 跑 3.9
+  # （手写协议层零依赖，主 job 已覆盖）。此前这个套件**不在 CI 里**——
+  # 它在本地无 SDK 时会自我 SKIP，于是"绿"掩盖了"没跑"（评审 F14）。
+  mcp-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install MCP SDK
+        run: pip install mcp
+      - name: Unit tests — CanonBench MCP server (official SDK)
+        run: python tests/test_mcp_sdk.py

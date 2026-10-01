@@ -69,4 +69,4 @@
 | 阿里云百炼 | ⛔ 账号欠费墙 | 阿里(qwen)/Moonshot(kimi)——待账务处理后补跑 |
 | OpenRouter | ⛔ 额度耗尽停用 | （v1 历史数据仍有效） |
 
-原始报表：`runs/v2/_flat/report.md`（由 `python3 -m bench.report.metrics runs/v2/_flat --write` 生成）。
+原始报表：**`bench/results/v2/report.md`**（随仓库发布；由 `python3 -m bench.report.metrics bench/results/v2 --write` 生成）。

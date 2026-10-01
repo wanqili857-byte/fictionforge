@@ -199,8 +199,17 @@ def render_page(out_dir) -> str:
                        for r in runs.values()})
 
     # 榜单表
-    board_rows = [[e["rank"], _esc(e["model"]), _fmt(e["bare"]), _fmt(e["mid"]),
-                   _fmt(e["full"]), M._billing_label(e.get("billing", "per_token")),
+    def _pair(rate, ab):
+        """密度（绝对）——两者成对是本项目自己的协议要求（§8-4）。"""
+        if rate is None:
+            return "—"
+        return f"{_fmt(rate)}（{ab:g}）" if ab is not None else _fmt(rate)
+
+    board_rows = [[e["rank"], _esc(e["model"]),
+                   _pair(e["bare"], e.get("bare_abs")),
+                   _pair(e.get("mid"), e.get("mid_abs")),
+                   _pair(e.get("full"), e.get("full_abs")),
+                   M._billing_label(e.get("billing", "per_token")),
                    ",".join(e["missing"]) or "—"] for e in board]
 
     # 每次运行表
@@ -266,9 +275,10 @@ def render_page(out_dir) -> str:
         "越低越好。数字直接标在柱上；下表是同一份数据。</p>",
 
         "<h2>榜单</h2>",
-        _table(["名次", "模型", "裸写", "注入上下文", "满配门禁(修后)", "计费", "缺档"],
-               board_rows),
-        '<p class="mut">排序键 = 裸写档核心违反率；并列同名次。缺档位照登但不可当完整行读。</p>',
+        _table(["名次", "模型", "裸写 密度(绝对)", "注入上下文 密度(绝对)",
+                "满配门禁 密度(绝对)", "计费", "缺档"], board_rows),
+        '<p class="mut">排序键 = 裸写档核心违反率；并列同名次。每格为<b>密度（绝对违反数）</b>——'
+        "密度可被加字稀释、绝对数不能，成对才不可刷。缺档位照登但不可当完整行读。</p>",
 
         "<h2>每次运行</h2>",
         _table(["run", "字数", "总违反", "核心违反", "核心/万字", "门禁 修前→修后"], run_rows),

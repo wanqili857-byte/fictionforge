@@ -198,6 +198,19 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
         chapter_paths[str(ch)] = str(ch_file.name)
         prior_text = (text if len(text) <= prior_tail else text[-prior_tail:])
 
+    # generated_at 是**首次生成**的时间；重判会重写 manifest，若照写 now() 就把
+    # 「生成时间」变成了「最后一次写入时间」（评审 F15）。所以优先沿用旧值，
+    # 重判时间另记。
+    prev_manifest = {}
+    mpath = run_dir / "run.json"
+    if mpath.exists():
+        try:
+            prev_manifest = json.loads(mpath.read_text(encoding="utf-8"))
+        except Exception:
+            prev_manifest = {}
+    generated_at = prev_manifest.get("generated_at") or datetime.now(timezone.utc).isoformat()
+    rejudged_at = datetime.now(timezone.utc).isoformat() if rejudge else ""
+
     summary = {
         "run_id": run_id, "model": model_spec.alias, "tier": tier, "k": k_index,
         "provider": model_spec.provider, "billing": model_spec.billing,
@@ -218,11 +231,13 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
         temperature=model_spec.temperature, max_tokens=model_spec.max_tokens,
         harness=HarnessTier(tier), k_index=k_index,
         prompt_hashes=prompt_hashes,
-        generated_at=datetime.now(timezone.utc).isoformat(),
+        generated_at=generated_at,
         cost={"tokens_in": tokens_in, "tokens_out": tokens_out,
               "currency_cost": round(cost, 6)},
         chapter_paths=chapter_paths,
-        notes=f"billing={model_spec.billing}; proxy={','.join(sorted(proxy_sources)) or 'n/a'}",
+        notes=(f"billing={model_spec.billing}; "
+               f"proxy={','.join(sorted(proxy_sources)) or 'n/a'}"
+               + (f"; rejudged_at={rejudged_at}" if rejudged_at else "")),
     )
     data = manifest.to_dict()
     data["_summary"] = summary

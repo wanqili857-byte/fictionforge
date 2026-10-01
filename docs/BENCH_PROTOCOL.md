@@ -22,7 +22,7 @@
 
 ```bash
 git clone https://github.com/wanqili857-byte/fictionforge.git
-cd fictionforge && git checkout feat/canonbench   # 榜单行注明 commit hash
+cd fictionforge   # 主线即 main；榜单行注明 commit hash
 python3 --version   # 3.9+ 均可；判定器零第三方依赖
 pip install requests
 ```

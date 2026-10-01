@@ -62,10 +62,11 @@
 ```
 bare   一个系统 prompt + 本章 spec              → 模型裸能力
 mid    + 设定/状态/前文/知识边界注入             → 上下文工程的贡献
-full   + 门禁 + 自动返修 + 状态回写              → 后处理门禁的贡献
+full   + 门禁（删禁词 / 切长段）                → 后处理门禁的贡献
 ```
 
-为什么必须三档而不是两档：**门禁会字面上把违反改掉**（自动替换禁词、返修篇幅）。只跑「裸 vs 满」，你分不清改进是「上下文给对了」还是「门禁擦掉了」。三档让两者各领各的功劳——这就是评测岗位常说的「归因到模型能力 vs 工程 harness」。
+为什么必须三档而不是两档：**门禁会字面上把违反改掉**（删掉禁词、切分超长段落）。
+注意门禁只做减法——它补不了篇幅，也不做状态回写（那是引擎侧的事，不在基准范围内）。只跑「裸 vs 满」，你分不清改进是「上下文给对了」还是「门禁擦掉了」。三档让两者各领各的功劳——这就是评测岗位常说的「归因到模型能力 vs 工程 harness」。
 
 （实测数字见 §9——两期跑批都验证了三档结构的必要性：门禁的贡献只有配对测量才量得准。）
 
@@ -218,7 +219,7 @@ ds-flash bare 2.48 / glm-flash bare 6.55；kimi 撞额度只完成 2/6 章作废
 ```bash
 git clone https://github.com/wanqili857-byte/fictionforge.git
 # 国内网络若 HTTPS 不稳，可改用 SSH：git@github.com:wanqili857-byte/fictionforge.git
-cd fictionforge && git checkout feat/canonbench
+cd fictionforge   # 主线即 main
 # Python 3.9+ 均可（判定器无第三方依赖）
 
 # 生成一个合成宇宙（确定性）
