@@ -84,17 +84,22 @@
 
 ## 五、处置台账（可执行断言）
 
+> **这份台账被 `quorum verify` 抓过一次**：初版 12 行里有 8 行的断言**当时就通过**——
+> 也就是说，把对应修复回滚，断言照样绿，属于装饰性断言。已全部改为「今天必红、
+> 修完才绿」的形式。工具抓自己主人的台账，这是它设计时的原话，也确实发生了。
+
+
 | # | 置信度 | 严重度 | 位置 | 问题 | 处置 | check | status |
 |---|---|---|---|---|---|---|---|
 | 1 | 跨模型族一致 | 🔴 | `bench/runner/llm.py` | 成功路径隐式返回 `None`（`break` 后死代码），且 `ParseError` 不在可重试集合 | 单一 `if status==200` 块内解析并返回；`ParseError` 入 `RETRYABLE_EXC`；补传输层打桩测试 | `python3 tests/test_runner_batch.py` | ✅ |
-| 2 | 跨模型族一致 | 🔴 | `bench/judges/state_judge.py` | 定语从句/比喻框被当成「死者活动」（出厂产物 4 条全是误报） | 加两条豁免：名字前是「的」（定语从句中心语）、活动动词后紧跟「的/过的/了的」（关系从句）；4 条真实误报进夹具 | `python3 tests/test_state_judge.py && ! grep -lE '走过的路\|走的那年\|站在跳板中间的老' bench/results/v2/*/violations.json` | ⬜ |
-| 3 | 跨模型族一致 | 🔴 | `bench/calib/real_text.py` | 「真实散文零误报」是空测（探针名不在语料中） | 校准账本改用**语料里真实出场的角色**当死者（由调用方传入名字表）；文档同步降级表述 | `python3 tests/test_calib.py` | ⬜ |
-| 4 | 跨模型族一致 | 🟠 | `bench/runner/batch.py` | 截断但非空的章节被当完整章 | 生成结果带 `finish_reason`；`length` 截断章记错误不落盘（与空正文同待遇） | `python3 tests/test_runner_batch.py` | ⬜ |
-| 5 | 跨模型族一致 | 🟠 | `bench/report/metrics.py` | 门禁配对测量未套用汇总剔除规则 | `gate_contribution` 接 `expected_chapters` 并跳过未完成/缺判决 | `python3 tests/test_report_metrics.py` | ⬜ |
-| 6 | 跨模型族一致 | 🟠 | `bench/universe/generator.py` | ≥3 条不变量对输出恒真（同源比较） | 反推校验改为对**独立重算**的期望值比较，并补阴性对照 | `python3 tests/test_universe.py` | ⬜ |
-| 7 | 跨模型族一致 | 🟠 | `docs/canonbench-results-v2.md`、`README.md` | 「跨两期复现」表述过强（v1 是密度口径翻转） | 改为「v2 两口径同向；v1 仅密度口径」 | `! grep -q '跨两期复跑批复现' README.md docs/canonbench-results-v2.md` | ⬜ |
-| 8 | 跨模型族一致 | 🟡 | `docs/BENCH_PROTOCOL.md`、`canonbench-writeup.md` | 复现协议首条命令分支不存在；报表路径被 gitignore | 分支名改 `main`；报表路径改 `bench/results/v2/report.md` | `grep -q 'bench/results/v2/report.md' docs/canonbench-results-v2.md` | ⬜ |
-| 9 | 含交叉 · 中置信 | 🟡 | `bench/report/metrics.py`、`html.py` | 榜单只给密度，与自家协议「成对」相抵触 | 榜单加绝对违反数列 | `python3 tests/test_report_metrics.py && python3 tests/test_report_html.py` | ⬜ |
-| 10 | 含交叉 · 中置信 | 🟡 | `bench/calib/real_text.py` | `cons-pov` 诱饵分辨不出 m0.2.0/m0.3.0 | 诱饵改为行首引号后接旁白第一人称（正是 m0.3.0 修的那类） | `python3 tests/test_calib.py` | ⬜ |
-| 11 | 单家独有 | 🟢 | `bench/runner/batch.py` | `generated_at` 是最后写入时间 | 记录 `generated_at`（首次）与 `rejudged_at`（重判时另记） | `python3 tests/test_runner_batch.py` | ⬜ |
-| 12 | 单家独有 | 🟢 | `reviews/review.yaml` | 审核员被权限白名单卡住，跑不成代码（三家全 FAILED 的主因） | 第二轮配置放行本地只读脚本；工单强制表格格式 | `quorum verify --config reviews/review.yaml` | ⬜ |
+| 2 | 跨模型族一致 | 🔴 | `bench/judges/state_judge.py` | 定语从句/比喻框被当成「死者活动」（出厂产物 4 条全是误报） | 加两条豁免：名字前是「的」（定语从句中心语）、活动动词后紧跟「的/过的/了的」；4 条真实误报进夹具 | `grep -q '定语从句' bench/judges/state_judge.py && ! grep -lE '走过的路\|走的那年\|站在跳板中间的老' bench/results/v2/*/violations.json` | ⬜ |
+| 3 | 跨模型族一致 | 🔴 | `bench/calib/real_text.py` | 「真实散文零误报」是空测（探针名不在语料中） | 校准账本改用**语料里真实出场的角色**当死者（调用方传入名字表） | `grep -q 'def corpus_dead_names' bench/calib/real_text.py` | ⬜ |
+| 4 | 跨模型族一致 | 🟠 | `bench/runner/batch.py` | 截断但非空的章节被当完整章 | 生成结果带 `finish_reason`；`length` 截断章记错误不落盘 | `grep -q 'finish_reason' bench/runner/batch.py && grep -q 'finish_reason' bench/runner/llm.py` | ⬜ |
+| 5 | 跨模型族一致 | 🟠 | `bench/report/metrics.py` | 门禁配对测量未套用汇总剔除规则 | `gate_contribution` 接 `expected_chapters` 并跳过未完成/缺判决 | `grep -q 'def gate_contribution(runs: dict, expected_chapters' bench/report/metrics.py` | ⬜ |
+| 6 | 跨模型族一致 | 🟠 | `bench/universe/generator.py` | ≥3 条不变量对输出恒真（同源比较） | 反推校验改为对独立重算的期望值比较，并补阴性对照 | `grep -q 'def _expected_reveal_chapter' bench/universe/generator.py` | ⬜ |
+| 7 | 跨模型族一致 | 🟠 | `docs/canonbench-results-v2.md`、`README.md` | 「跨两期复现」表述过强（v1 是密度口径翻转、绝对数是好的） | 改为「v2 两口径同向；v1 仅密度口径」 | `! grep -q '跨两期跑批复现' README.md docs/canonbench-results-v2.md` | ⬜ |
+| 8 | 跨模型族一致 | 🟡 | `docs/BENCH_PROTOCOL.md`、`canonbench-writeup.md` | 复现协议首条命令分支不存在；报表路径被 gitignore | 分支名改 `main`；报表路径改 `bench/results/v2/report.md` | `grep -q 'bench/results/v2/report.md' docs/canonbench-results-v2.md && ! grep -rq 'checkout feat/canonbench' docs/` | ⬜ |
+| 9 | 含交叉 · 中置信 | 🟡 | `bench/report/metrics.py`、`html.py` | 榜单只给密度，与自家协议「绝对数成对」相抵触 | 榜单加绝对违反数列 | `python3 -m bench.report.metrics bench/results/v2 | grep -qE '名次.*绝对'` | ⬜ |
+| 10 | 含交叉 · 中置信 | 🟡 | `bench/calib/real_text.py` | `cons-pov` 诱饵分辨不出 m0.2.0/m0.3.0 | 诱饵改为「行首引号 + 其后旁白第一人称」（正是 m0.3.0 修的那类） | `grep -q '“这是我的。”我蹲进凹陷' bench/calib/real_text.py` | ⬜ |
+| 11 | 单家独有 | 🟢 | `bench/runner/batch.py` | `generated_at` 是最后写入时间 | 记 `generated_at`（首次）与 `rejudged_at`（重判另记） | `grep -q 'rejudged_at' bench/runner/batch.py` | ⬜ |
+| 12 | 单家独有 | 🟢 | `reviews/review.yaml` | 审核员被权限白名单卡住（三家全 FAILED 主因）；codex 标题式结论被判 0 条 | 第二轮配置放行本地只读脚本；工单强制表格格式 | `grep -qE 'allowedTools\|permission' reviews/review.yaml && grep -q '严重度表' reviews/brief.md` | ⬜ |
