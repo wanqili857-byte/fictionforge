@@ -1,0 +1,124 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-forbidden-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 2,
+        "first_span": "“姑娘。”男人的声音忽然放软了，“灯塔几时亮"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "medium",
+      "evidence": {
+        "actual": 989,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "璃，把抹布叠成方块，忽然开口。\n\n\"你要问的"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2494,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "state-dead-ch3",
+      "type": "state",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "high",
+      "evidence": {
+        "span": "老麦如今问的那些，原来也不是老麦先问的。",
+        "character": "老麦"
+      },
+      "run_id": "batch",
+      "confidence": 0.7,
+      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 1158,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch5",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "medium",
+      "evidence": {
+        "actual": 146,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "事的盯着她看了半晌，忽然松了口风：\n\n“棚里"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": []
+}

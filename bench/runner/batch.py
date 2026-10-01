@@ -262,7 +262,7 @@ def run_batch(u, model_aliases, tiers=("bare", "mid", "full"), k=1, out_dir="run
 
 
 def main():
-    ap = argparse.ArgumentParser(description="LCB 跑批")
+    ap = argparse.ArgumentParser(description="CanonBench 跑批")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--chapters", type=int, default=6)
     ap.add_argument("--models", default="ark-db-lite,ark-glm-flash,ark-ds-flash")

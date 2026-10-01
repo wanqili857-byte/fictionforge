@@ -1,0 +1,7 @@
+{"chapter": 1, "tokens_in": 0, "tokens_out": 0, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d"}
+{"chapter": 1, "tokens_in": 459, "tokens_out": 6929, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d"}
+{"chapter": 2, "tokens_in": 1489, "tokens_out": 9817, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "56aecd1799ddd229edd9dbf13f0f235556dd2b199c601b7ea1df21e89636684d"}
+{"chapter": 3, "tokens_in": 1505, "tokens_out": 7618, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "15bae6acf57680acefa83ff74942f176316edbb161494fe352397a96e7a57d67"}
+{"chapter": 4, "tokens_in": 1482, "tokens_out": 9408, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "622ddc99e8965f999156611bfadd3b24930414a4d6bed87ab7cd487d719c2ca6"}
+{"chapter": 5, "tokens_in": 1456, "tokens_out": 11272, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "5cd0d0cbfc18e3efd12b5909f3faeb315f8b841983105c93429276f5905fe519"}
+{"chapter": 6, "tokens_in": 1489, "tokens_out": 10812, "cost": 0.0, "proxy": "policy:direct", "prompt_hash": "8b19686f566157ae4e1c4161028a31c2154d3df1f6514b029a308a7374810519"}

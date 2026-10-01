@@ -1,0 +1,243 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-forbidden-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 2,
+        "first_span": "木纹往下滑的时候，她突然摸到一道浅刻的痕迹，"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-para-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "low",
+      "evidence": {
+        "count": 1,
+        "span": "货棚的木架上整整齐齐码着一排盐箱，每只箱角都打了厚重的铁包角",
+        "len": 117
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-para-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "low",
+      "evidence": {
+        "count": 1,
+        "span": "雾巷在码头的背阴处，两边的青砖被海雾浸了几十年，墙皮起了发乌",
+        "len": 108
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-para-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "low",
+      "evidence": {
+        "count": 1,
+        "span": "本该挂在西边天上的太阳，被雾滤成了个模模糊糊的白影子，照在干",
+        "len": 136
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-para-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "low",
+      "evidence": {
+        "count": 1,
+        "span": "苏茜能听见身后传来的脚步声，是跟在她后面的那两个短打，再往前",
+        "len": 105
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2391,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "没有让步。\n灯塔顶端忽然传来第一声钟响，昏黄"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "下面铺得满当的码头，忽然觉得脚底下的路都虚了"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 1,
+        "first_span": "茜捏着小本子的页角，突然觉得早上在灯塔摸到的"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2373,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-pov-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "high",
+      "evidence": {
+        "word": "我",
+        "span": "我昨儿找了三个跑船的老伙计问盐箱的事。"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-pov-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "high",
+      "evidence": {
+        "word": "我",
+        "span": "我知道你们是故意让我来的。"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch5",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "着水面上晃荡的影子，忽然觉得喉咙发涩。\n她之"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch5",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2385,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 1,
+        "first_span": "看根本发现不了。\n她突然想起底舱那道新的撬痕"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "medium",
+      "evidence": {
+        "actual": 3182,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": []
+}

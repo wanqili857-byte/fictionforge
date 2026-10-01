@@ -56,7 +56,7 @@ def raises_contract(fn, *substr):
 def make_bench() -> dict:
     return {
         "bench_version": "0.1.0",
-        "version_name": "LCB",
+        "version_name": "CanonBench",
         "universe_generator_version": "u0.1.0",
         "judge_mechanical_version": "m0.1.0",
         "judge_semantic_model": "deepseek-v4-flash",

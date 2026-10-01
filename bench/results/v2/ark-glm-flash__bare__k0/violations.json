@@ -1,0 +1,50 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-forbidden-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 2,
+        "first_span": "后呢。”\n\n“然后他忽然不问了。买了条小船，"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch5",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 2,
+        "first_span": "后呢？”\n\n“然后她忽然不问了。”陆岐咬了口"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "。只知道她问着问着，忽然就不问了。”陆岐把橘"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": []
+}

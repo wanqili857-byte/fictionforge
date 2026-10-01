@@ -1,4 +1,4 @@
-# LCB 跑批结果 v2（方舟通道 · 三厂商 · 三档 harness）
+# CanonBench 跑批结果 v2（方舟通道 · 三厂商 · 三档 harness）
 
 > 生成条件：合成宇宙 seed=42 × 6 章，k=1，harness 三档（bare/mid/full），
 > 判定器 `m0.3.0`，生成通道 = 火山方舟 coding plan（订阅制）。

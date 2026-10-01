@@ -1,0 +1,154 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-forbidden-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 2,
+        "first_span": "铁箍闪着暗沉的光。她忽然意识到，刚才数数的时"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 3011,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "有变。但她身后的灯室忽然亮了一下，只一下，又"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "后一口红薯咽下去。她忽然觉得胃里沉得厉害，像"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-para-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "low",
+      "evidence": {
+        "count": 1,
+        "span": "第4天上午，堤坝。雾从脚底下翻上来，把水泥缝里的积水吞掉了。",
+        "len": 109
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2460,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-pov-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "high",
+      "evidence": {
+        "word": "我",
+        "span": "我替柳娘签的。"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": [
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 3007,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2461,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-pov-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "high",
+      "evidence": {
+        "word": "我",
+        "span": "我替柳娘签的。"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ]
+}

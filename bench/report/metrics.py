@@ -350,7 +350,7 @@ def leaderboard(agg: list, tiers=("bare", "mid", "full")) -> list:
 
 
 def render_leaderboard(ranked: list) -> str:
-    lines = ["# LCB 榜单（核心违反率，升序 = 越一致）", "",
+    lines = ["# CanonBench 榜单（核心违反率，升序 = 越一致）", "",
              "> 排序键 = bare 档核心违反率（裸能力）；并列同名次。",
              "> `订阅`/`免费额度` = 零边际成本通道，成本列不可与按量行比钱数。",
              "> 缺档位 = 跑批未完成该档，数字照登但不可当完整行读。", "",
@@ -366,7 +366,7 @@ def render_leaderboard(ranked: list) -> str:
 
 
 def render_markdown(rows: list, agg: list) -> str:
-    lines = ["# LCB 跑批结果", "",
+    lines = ["# CanonBench 跑批结果", "",
              "> 核心违反 = 剔除「篇幅合规」后的违反（状态/视角/文体/知识边界），",
              "> 即叙事一致性；篇幅属指令跟随，单列。两个数字都要看：",
              "> 密度可被加字稀释（详见 writeup §8），所以绝对数一并给出。", "",
@@ -430,7 +430,7 @@ def render_markdown(rows: list, agg: list) -> str:
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="LCB 报表")
+    ap = argparse.ArgumentParser(description="CanonBench 报表")
     ap.add_argument("out_dir", help="跑批输出目录（含 results.json 与各 run 目录）")
     ap.add_argument("--write", action="store_true", help="写入 report.md")
     args = ap.parse_args()

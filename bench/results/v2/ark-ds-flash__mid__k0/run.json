@@ -1,0 +1,57 @@
+{
+  "_summary": {
+    "billing": "subscription",
+    "chapters_done": 6,
+    "cost": 0.0,
+    "errors": [],
+    "k": 0,
+    "model": "ark-ds-flash",
+    "provider": "ark",
+    "proxy": "policy:direct",
+    "run_id": "ark-ds-flash__mid__k0",
+    "tier": "mid",
+    "tokens_in": 7034,
+    "tokens_out": 10855,
+    "violations_post_fix": null,
+    "violations_pre_fix": 3
+  },
+  "bench": {
+    "bench_version": "0.1.0",
+    "judge_mechanical_version": "m0.3.0",
+    "judge_semantic_model": "",
+    "judge_semantic_prompt_version": "",
+    "universe_generator_version": "u0.1.0",
+    "universe_seed": 42,
+    "version_name": "CanonBench"
+  },
+  "chapter_paths": {
+    "1": "ch1.md",
+    "2": "ch2.md",
+    "3": "ch3.md",
+    "4": "ch4.md",
+    "5": "ch5.md",
+    "6": "ch6.md"
+  },
+  "cost": {
+    "currency_cost": 0.0,
+    "tokens_in": 7034,
+    "tokens_out": 10855
+  },
+  "generated_at": "2026-10-01T13:16:34.291830+00:00",
+  "harness": "mid",
+  "k_index": 0,
+  "max_tokens": 8192,
+  "model": "deepseek-v4-1-flash-260910",
+  "notes": "billing=subscription; proxy=policy:direct",
+  "prompt_hashes": {
+    "1": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d",
+    "2": "b9c384ca20c15b660b87602e4279ab3e070eaba05acd1b53d8450077f915c63a",
+    "3": "7578b7e09191ed3a4a65d3404b27fc73466f1f11205f3186d01fa332b77a9195",
+    "4": "536dd561b22e10d2f33bf3e432cfbdefc6c8e22c0d60d762edf9c9275df911da",
+    "5": "d8c18a7a11e324cb64935aa7131f70962ea34203028573a38e4cd369e2705c8f",
+    "6": "86fad79d07e824c407811239403294025112833151d627c204e81f8e47da4d21"
+  },
+  "provider": "ark",
+  "run_id": "ark-ds-flash__mid__k0",
+  "temperature": 0.85
+}

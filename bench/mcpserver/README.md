@@ -1,4 +1,4 @@
-# LCB MCP Server
+# CanonBench MCP Server
 
 把长程一致性基准的能力暴露成 MCP 工具，任何 MCP 客户端（Claude Code / Cursor / …）可直接调用。
 
@@ -10,7 +10,7 @@
 | **手写版** | `server.py` | 无（零第三方） | Python 3.9 即可 | 协议层自实现，可审计、协议级可单测，只实现 tools 子集 |
 
 工具逻辑不分叉——两版都调 `tools.py` 的同一批纯函数，描述文本同取自 `tool_specs()`。
-`scripts/lcb_mcp.py` 自动选择：SDK 可用则用 SDK，否则回落手写；也可 `--sdk` / `--hand-rolled` 强制。
+`scripts/canonbench_mcp.py` 自动选择：SDK 可用则用 SDK，否则回落手写；也可 `--sdk` / `--hand-rolled` 强制。
 
 ## 工具
 
@@ -27,14 +27,14 @@
 SDK 版（推荐，Python ≥3.10 环境）：
 
 ```bash
-claude mcp add lcb -- /Users/ayu/ayu/写作/fictionforge/.venv/bin/python \
-    /Users/ayu/ayu/写作/fictionforge/scripts/lcb_mcp.py
+claude mcp add canonbench -- /Users/ayu/ayu/写作/fictionforge/.venv/bin/python \
+    /Users/ayu/ayu/写作/fictionforge/scripts/canonbench_mcp.py
 ```
 
 手写版（零依赖 / Python 3.9）：
 
 ```bash
-claude mcp add lcb -- python3 /Users/ayu/ayu/写作/fictionforge/scripts/lcb_mcp.py
+claude mcp add canonbench -- python3 /Users/ayu/ayu/写作/fictionforge/scripts/canonbench_mcp.py
 ```
 
 项目级 `.mcp.json`：
@@ -42,9 +42,9 @@ claude mcp add lcb -- python3 /Users/ayu/ayu/写作/fictionforge/scripts/lcb_mcp
 ```json
 {
   "mcpServers": {
-    "lcb": {
+    "canonbench": {
       "command": "/Users/ayu/ayu/写作/fictionforge/.venv/bin/python",
-      "args": ["/Users/ayu/ayu/写作/fictionforge/scripts/lcb_mcp.py"]
+      "args": ["/Users/ayu/ayu/写作/fictionforge/scripts/canonbench_mcp.py"]
     }
   }
 }
@@ -76,11 +76,11 @@ universe_generate(seed=99, chapters=6, out_dir=/tmp/u)
  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
  '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'; sleep 3; } \
- | .venv/bin/python scripts/lcb_mcp.py --sdk
+ | .venv/bin/python scripts/canonbench_mcp.py --sdk
 
 # 手写版（写完即关 stdin 也可以，同步处理）
 printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
- | python3 scripts/lcb_mcp.py --hand-rolled
+ | python3 scripts/canonbench_mcp.py --hand-rolled
 ```
 
 ## 已知差异与限制

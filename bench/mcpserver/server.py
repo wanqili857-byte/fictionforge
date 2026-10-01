@@ -16,7 +16,7 @@ import sys
 from bench.mcpserver.tools import call_tool, tool_specs, ToolError
 
 PROTOCOL_VERSION = "2025-06-18"
-SERVER_NAME = "lcb-bench"
+SERVER_NAME = "canonbench"
 SERVER_VERSION = "0.1.0"
 
 _PARSE_ERROR = -32700

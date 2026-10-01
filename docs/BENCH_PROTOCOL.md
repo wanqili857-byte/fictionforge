@@ -1,9 +1,9 @@
-# LCB 复现协议（v0，随 v2 跑批生效）
+# CanonBench 复现协议（v0，随 v2 跑批生效）
 
 > 目标：**任何人照本文能在自己机器上复现榜单上的一行数字**，并且知道每一环
 > 哪些是确定的、哪些不是。复现不了的基准不是基准。
 >
-> 配套：`docs/BENCH_PLAN.md`（实施计划）、`docs/lcb-writeup.md`（方法文章）、
+> 配套：`docs/BENCH_PLAN.md`（实施计划）、`docs/canonbench-writeup.md`（方法文章）、
 > `bench/contracts.py`（契约，RunManifest 是可追责的最小单位）。
 
 ---
@@ -22,7 +22,7 @@
 
 ```bash
 git clone https://github.com/wanqili857-byte/fictionforge.git
-cd fictionforge && git checkout feat/lcb-bench   # 榜单行注明 commit hash
+cd fictionforge && git checkout feat/canonbench   # 榜单行注明 commit hash
 python3 --version   # 3.9+ 均可；判定器零第三方依赖
 pip install requests
 ```
@@ -64,8 +64,8 @@ key 放 `~/.env`（项目外，不会提交）。变量名按通道：
 
 代理是复现的头号坑：`requests` 默认继承 macOS 系统代理，会把国内域名也劫走
 （实测方舟经代理握手 EOF，而 curl 不读系统代理、能通——坑只在代码路径出现）。
-框架已显式处理（`bench/runner/llm.py: resolve_proxy`），换机器可用 `LCB_PROXY`
-覆盖：`LCB_PROXY=direct` 全直连，或 `LCB_PROXY=http://host:port` 指定代理。
+框架已显式处理（`bench/runner/llm.py: resolve_proxy`），换机器可用 `CANONBENCH_PROXY`
+覆盖：`CANONBENCH_PROXY=direct` 全直连，或 `CANONBENCH_PROXY=http://host:port` 指定代理。
 
 ```bash
 python3 -m bench.runner.batch --list-models   # 看目录与通道状态，不花 token

@@ -1,8 +1,8 @@
-# 长程一致性怎么测：一个能自动判定的基准（LCB）
+# 长程一致性怎么测：一个能自动判定的基准（CanonBench）
 
 > 草稿 v3 · 2026-09-27。可发知乎 / 掘金 / 公众号 / GitHub Discussions。
 > 配套代码：`bench/`（判定器 + 合成宇宙 + MCP server），`docs/BENCH_PLAN.md`（实施计划）。
-> 命名 LCB 为占位，未定稿。
+> 基准名 CanonBench（2026-10-01 定名；此前内部代号 LCB）。
 
 ---
 
@@ -18,7 +18,7 @@
 
 先说清它和现有长上下文评测的区别。**大海捞针（NIAH）、RULER、LongBench 这一系测的是检索**：埋一个事实，提问，看模型能不能捞出来。那是「按题作答」。而写小说时的失败面完全不同——模型在**无题自由生成**，没人提醒它「注意第 2 章那个死人」，它得自己不漏出不该知道的事、不违反已知状态。检索满分和生成中不漏，是两种能力。据我所知，以**自动判定**为核心、面向生成一致性的公开基准还很少——这正是本文要补的位置（欢迎指正我没看到的同类工作）。
 
-所以我做了 **LCB（Long-horizon Consistency Bench）**：一个**有自动判定器**的长程叙事一致性基准。它的定位不是「评测小说写得好不好」（那需要审美判断），而是**只测能自动判定的那部分**——状态、知识、时间线、约束。审美留给人类，状态留给机器。
+所以我做了 **CanonBench（Long-horizon Consistency Bench）**：一个**有自动判定器**的长程叙事一致性基准。它的定位不是「评测小说写得好不好」（那需要审美判断），而是**只测能自动判定的那部分**——状态、知识、时间线、约束。审美留给人类，状态留给机器。
 
 ## 二、设计五原则
 
@@ -197,9 +197,9 @@ seed → 一部可跑的合成小说包
 把真信号淹没）。所以 v1 与 v2 数字同口径，可直接比；但当时 manifest 记的版本号
 早于判据修复，这一点以本说明为准。
 ds-flash bare 2.48 / glm-flash bare 6.55；kimi 撞额度只完成 2/6 章作废。
-原始报告：`docs/lcb-results-v1.md`；v2 原始报告：`docs/lcb-results-v2.md`。
+原始报告：`docs/canonbench-results-v1.md`；v2 原始报告：`docs/canonbench-results-v2.md`。
 
-报告原件：`docs/lcb-results-v2.md`（由 `python3 -m bench.report.metrics` 生成 + 人工注解）。
+报告原件：`docs/canonbench-results-v2.md`（由 `python3 -m bench.report.metrics` 生成 + 人工注解）。
 
 ## 十、边界与诚实清单
 
@@ -215,7 +215,7 @@ ds-flash bare 2.48 / glm-flash bare 6.55；kimi 撞额度只完成 2/6 章作废
 ```bash
 git clone https://github.com/wanqili857-byte/fictionforge.git
 # 国内网络若 HTTPS 不稳，可改用 SSH：git@github.com:wanqili857-byte/fictionforge.git
-cd fictionforge && git checkout feat/lcb-bench
+cd fictionforge && git checkout feat/canonbench
 # Python 3.9+ 均可（判定器无第三方依赖）
 
 # 生成一个合成宇宙（确定性）
@@ -234,7 +234,7 @@ python3 tests/test_mechanical.py  # 45 项
 
 ```bash
 ~/.local/bin/python3.12 -m venv .venv && .venv/bin/pip install mcp   # 或任何 3.10+
-claude mcp add lcb -- "$PWD/.venv/bin/python" "$PWD/scripts/lcb_mcp.py"
+claude mcp add canonbench -- "$PWD/.venv/bin/python" "$PWD/scripts/canonbench_mcp.py"
 ```
 
 然后直接说：「生成 seed 99 的六章宇宙，查账本看谁死了，再拿一段含死者的正文跑门禁」——工具会串起来跑。

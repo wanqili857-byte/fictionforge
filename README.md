@@ -1,15 +1,67 @@
-# 🔨 FictionForge · 小说锻造
+# CanonBench · 长程一致性基准
 
-**把大纲锻造成让人睡不着的小说。**
+**12 章的小说里，第 2 章死掉的人会不会在第 4 章端着水走过来？**
 
 ![python](https://img.shields.io/badge/Python-3.9+-3776AB)
 ![license](https://img.shields.io/badge/License-MIT-green)
 ![ci](https://github.com/wanqili857-byte/fictionforge/actions/workflows/ci.yml/badge.svg)
 ![stars](https://img.shields.io/github/stars/wanqili857-byte/fictionforge)
 
-多智能体小说写作框架——**每个角色都有自己的脑子,每一章都有质量门禁。**
+这是把「长篇一致性」做成**可自动判定**的基准：判定器零 LLM、可审计；输入由确定性
+合成宇宙生成器产出（同 seed 逐字节相同）；跑批带**三档 harness 消融**，把「模型能力」
+与「工程管线」的贡献分开算。
+
+## 首期结果（3 厂商 × 3 档 harness × 6 章）
+
+| 模型 | 裸写 | 注入上下文 | 满配门禁(修后) |
+|---|---|---|---|
+| glm-5.3-flash | **2.52** | 4.58 | 0.0 |
+| deepseek-v4.1-flash | 4.28 | **1.66** | 0.74 |
+| doubao-seed-2-1-lite | 8.33 | 4.93 | **0.0** |
+
+> 单位：核心违反数 / 万字（已剔除「篇幅合规」——篇幅属指令跟随，单列）。
+>
+> **反直觉发现**：给 glm 注入上下文，它反而更差（跨两期跑批复现），而 deepseek 与
+> 豆包都是正贡献——「哪个模型最好」取决于你把它装进什么样的管线，没有绝对赢家。
+
+[完整结果与六条注解](docs/canonbench-results-v2.md) · [复现协议](docs/BENCH_PROTOCOL.md) · [方法与设计](docs/canonbench-writeup.md)
+
+## 30 秒跑一遍（零 token、零网络）
+
+```bash
+git clone https://github.com/wanqili857-byte/fictionforge.git && cd fictionforge
+python3 -m bench.report.metrics bench/results/v2   # 从入库的官方产物重算报表 + 榜单
+python3 tests/test_state_judge.py                  # 判定器自检（含真实误报夹具）
+```
+
+官方跑批产物（生成正文 / 判决 / 运行清单，共 449 KB）**随仓库发布**——clone 之后就能
+离线重判、逐字节核对 prompt hash。协议里写的校验清单，全都能在这里立刻跑。
+
+## 判定器能测什么
+
+| 类型 | 埋法 | 判定方式 |
+|---|---|---|
+| **状态一致** | 死亡 / 物品 / 位置 / 时间线入状态账本 | 死人复活、物品瞬移、天数倒流 |
+| **约束遵守** | 禁词 / 篇幅 / 人称 / POV | 机械可数 |
+| **上下文腐坏** | 第 1 章埋无关细节 | 第 N 章能否正确回收，按距离画衰减 |
+| **知识边界** | 真相表标「谁在第几章知道什么」 | *设计中*：清单式 LLM 判定 + Kappa 准入 |
+
+和「大海捞针」一系（NIAH / RULER / LongBench）的区别：那些测**检索**（埋一个事实 →
+提问 → 看能不能捞出来），是「按题作答」。这里测**无题自由生成下的一致性**——没人提醒
+模型「注意第 2 章那个死人」，它得自己不漏。据我们所知，以自动判定为核心、面向生成
+一致性的公开基准还很少，这正是本项目要补的位置。
+
+另有两点是这个基准的自我要求：**抗刷分自测**（注水/复制/术语轰炸三种攻击，实测都能
+刷低密度指标——所以密度与绝对数成对同报），以及**判定器自己也要被测**（真实误报原文
+进测试夹具）。详见 [方法文](docs/canonbench-writeup.md)。
 
 ---
+
+# 🔨 它从哪来：FictionForge · 多智能体小说引擎
+
+CanonBench 的判定器，原本是给下面这个引擎当质量门禁用的——抽出来、补上合成宇宙与
+跑批之后，才长成了一把独立的尺子。
+
 
 ## 这不是又一个"ChatGPT 帮我写小说"
 
@@ -131,40 +183,12 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 ---
 
-## 顺带造的一把尺子 · LCB 长程一致性基准
-
-写长篇最难的不是文笔,是**一致性**:第 2 章死的人第 4 章又活了、第 5 章才该知道的事第 3 章就说了出来。这是 agent 的**长程状态追踪**问题——和记忆、上下文腐坏同一类。
-
-于是把框架里的一致性判定器抽出来,做成可自动判定的基准:
-
-**已实现**
-
-- 🔍 **判定器** —— 约束遵守(禁词/篇幅/POV/人称)、状态一致(死人复活/物品瞬移/时间倒流/物品双持有),纯函数、零 LLM、可精确单测
-- 🧪 **合成宇宙** —— `seed → 一部可跑的小说包`,零 LLM、**逐字节可复现**,ground truth 自带不变量自检(含阴性对照)
-- 🏃 **跑批与指标** —— 模型 × 三档 harness(裸/注入/满) × k 次;逐章用量账本、可续跑;密度与绝对违反数**成对**、自助法 CI、pass^k、三档归因
-- 🛡️ **抗刷分自测** —— 注水/复制/术语轰炸三攻击 + 重复率判据(实测三个攻击都能刷低密度指标,防线是绝对数成对 + 重复率 + 篇幅门禁)
-- 🔌 **MCP server** —— 五个工具可直接被 agent 调用(手写协议层 + 官方 SDK 双实现)
-
-- 🏆 **榜单与复现协议** —— 静态榜单(bare 档排序/并列同名次) + `docs/BENCH_PROTOCOL.md`:宇宙 sha256 校准、manifest 校验清单、榜单准入规则
-
-**首期跑批结果**(三厂商 × 三档 × 6 章,判定器 m0.3.0,见 `docs/lcb-results-v2.md`):裸写 glm-5.3-flash 最优(2.52 核心违反/万字);给上下文后**豆包绝对改善最大**(8.33→4.93)、**deepseek 相对降幅最大**(4.28→1.66);三家被满配门禁拉到修后 0/0.74/0。**glm 家族对上下文注入负贡献,跨两期跑批复现**。
-
-**设计中(见 `docs/BENCH_PLAN.md`)**
-
-- 🧠 **语义判定** —— 知识边界(谁在第几章知道什么)与上下文腐坏:清单式 LLM 判定 + Kappa 准入门槛
-
-细节见 `bench/mcpserver/README.md`;设计与发现见 `docs/lcb-writeup.md`。
-
-> 有意思的是:判定器抓出的第一批违规,来自我自己的数据生成器——ground truth 被自己的工具查出矛盾。详见 writeup §7。
-
----
-
 ## 状态
 
 - ✅ 引擎全链跑通(tick → spec → 正文)
 - ✅ 框架/内容包解耦——换小说不动引擎
 - ✅ **v0.3.0 修订感知管线**——canon/drafts 分家、修订回灌(素材库)、局部重生成、情节差异回流
-- ✅ **LCB 长程一致性基准**(v0.4.0)——判定器/合成宇宙/跑批/指标/抗刷分/榜单/复现协议全链完成;两期受控跑批出数;语义判定(Kappa)进行中
+- ✅ **CanonBench 长程一致性基准**(v0.4.0)——判定器/合成宇宙/跑批/指标/抗刷分/榜单/复现协议全链完成;两期受控跑批出数;语义判定(Kappa)进行中
 - 🚧 文档、适配示例、示例小说 Tier1 agent,持续完善中
 
 ---
@@ -173,8 +197,8 @@ python3 scripts/gen.py --force novels/静默轨道/specs/ch1.json
 
 | 版本 | 内容 |
 |---|---|
-| **v0.4.1** | **审计修复**:CI 覆盖 LCB 全部套件、报表三处静默缺陷(门禁全清的 run 被漏统计/缺判决的残缺 run 冒充零违反/部分完成混入汇总)、旁白剥离修正、文档数字对账 |
-| v0.4.0 | **LCB 长程一致性基准**:判定器(m0.3.0 起)/合成宇宙(逐字节可复现)/三档 harness 跑批/指标(密度+绝对数成对、门禁配对)/抗刷分自测/榜单/复现协议/MCP server;两期受控跑批出数([结果](docs/lcb-results-v2.md)) |
+| **v0.4.1** | **审计修复**:CI 覆盖 CanonBench 全部套件、报表三处静默缺陷(门禁全清的 run 被漏统计/缺判决的残缺 run 冒充零违反/部分完成混入汇总)、旁白剥离修正、文档数字对账 |
+| v0.4.0 | **CanonBench 长程一致性基准**:判定器(m0.3.0 起)/合成宇宙(逐字节可复现)/三档 harness 跑批/指标(密度+绝对数成对、门禁配对)/抗刷分自测/榜单/复现协议/MCP server;两期受控跑批出数([结果](docs/canonbench-results-v2.md)) |
 | v0.3.0 | **修订感知管线**:canon/drafts 分家、修订 diff 打标→素材库回灌、`--resection` 局部重生成、情节漂移回流 |
 | v0.2.0 | 理论心智层:真相表 + 知识 vs 真相 + A/B 反转素材、顶层协调器(gen/engine/hybrid) |
 | v0.1.0 | 引擎全链:TickRunner→角色 agents→Narrator 合成,框架/内容包解耦 |
@@ -197,4 +221,4 @@ Under the hood it's built for the long haul: **unified context** (every chapter 
 
 **Bring your own novel:** copy `templates/novel/`, fill `novel_config.json` + `bible/`, write a protagonist agent, done.
 
-**LCB (v0.4.0) — a benchmark for long-horizon consistency.** The same consistency checkers the framework uses for quality gates, extracted into a benchmark: constraint adherence (banned words, length, POV, pronouns) and state consistency (dead characters walking, teleporting items, time going backwards) — pure functions, zero LLM, exactly unit-testable. Inputs come from a **fully deterministic synthetic-universe generator** (`seed → a runnable novel package`, byte-identical across runs, with self-checked invariants and negative-control tests), so ground truth never wobbles. Batch runs with a **three-tier harness ablation** (bare / context-injected / full-gate), paired gate attribution, anti-gaming self-tests, a static leaderboard, and a reproduction protocol all shipped in v0.4.0 — first controlled runs across three vendors are in `docs/lcb-results-v2.md`. Still being built: semantic judging of knowledge boundaries (checklist-style LLM judging behind a Kappa gate). Also ships as an **MCP server** — five tools an agent can call directly. See `bench/mcpserver/README.md`, `docs/lcb-writeup.md` and `docs/BENCH_PROTOCOL.md`.
+**CanonBench — a benchmark for long-horizon consistency (this is the repo's headline project).** The same consistency checkers the framework uses for quality gates, extracted into a benchmark: constraint adherence (banned words, length, POV, pronouns) and state consistency (dead characters walking, teleporting items, time going backwards) — pure functions, zero LLM, exactly unit-testable. Inputs come from a **fully deterministic synthetic-universe generator** (`seed → a runnable novel package`, byte-identical across runs, with self-checked invariants and negative-control tests), so ground truth never wobbles. Batch runs with a **three-tier harness ablation** (bare / context-injected / full-gate), paired gate attribution, anti-gaming self-tests, a static leaderboard, and a reproduction protocol all shipped in v0.4.0 — first controlled runs across three vendors are in `docs/canonbench-results-v2.md`. Still being built: semantic judging of knowledge boundaries (checklist-style LLM judging behind a Kappa gate). Also ships as an **MCP server** — five tools an agent can call directly. See `bench/mcpserver/README.md`, `docs/canonbench-writeup.md` and `docs/BENCH_PROTOCOL.md`.

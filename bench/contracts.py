@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""bench.contracts — LCB 数据契约（W0）。
+"""bench.contracts — CanonBench 数据契约（W0）。
 
 一切下游模块只通过本模块的 schema 交换数据。
 设计约束（docs/BENCH_PLAN.md §一.5）：
@@ -77,7 +77,7 @@ def _check_confidence(v: float, where: str):
 class BenchVersion:
     """一次基准版本的完整身份——可复现原则的载体。"""
     bench_version: str                 # 基准自身版本，如 "0.1.0"
-    version_name: str = "LCB"          # 基准名（占位，可换）
+    version_name: str = "CanonBench"          # 基准名（占位，可换）
     universe_generator_version: str = ""
     judge_mechanical_version: str = ""
     judge_semantic_model: str = ""     # 如 "deepseek-v4-flash"；无语义判定则 ""
@@ -88,7 +88,7 @@ class BenchVersion:
     def from_dict(cls, d: dict) -> "BenchVersion":
         return cls(
             bench_version=_req(d, "bench_version"),
-            version_name=d.get("version_name", "LCB"),
+            version_name=d.get("version_name", "CanonBench"),
             universe_generator_version=d.get("universe_generator_version", ""),
             judge_mechanical_version=d.get("judge_mechanical_version", ""),
             judge_semantic_model=d.get("judge_semantic_model", ""),

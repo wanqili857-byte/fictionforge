@@ -1,0 +1,50 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-forbidden-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 1,
+        "first_span": "他说，声音里那点笑意突然收干净了。“你不让，"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "页，空白。\n\n老板娘忽然用抹布敲了敲锅沿。金"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2659,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": []
+}

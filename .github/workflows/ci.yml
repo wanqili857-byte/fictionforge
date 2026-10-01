@@ -24,25 +24,25 @@ jobs:
       - name: Unit tests — chapter coordinator
         run: python tests/test_chapter_coordinator.py
 
-      # LCB 基准（判定器/宇宙/跑批/指标/抗刷分/MCP）——全部零 LLM、零网络，
+      # CanonBench 基准（判定器/宇宙/跑批/指标/抗刷分/MCP）——全部零 LLM、零网络，
       # 正是为 CI 设计的。少了这一步，徽章绿不绿跟头牌功能无关。
-      - name: Unit tests — LCB contracts
+      - name: Unit tests — CanonBench contracts
         run: python tests/test_contracts.py
-      - name: Unit tests — LCB mechanical judge
+      - name: Unit tests — CanonBench mechanical judge
         run: python tests/test_mechanical.py
-      - name: Unit tests — LCB state judge
+      - name: Unit tests — CanonBench state judge
         run: python tests/test_state_judge.py
-      - name: Unit tests — LCB state ledger
+      - name: Unit tests — CanonBench state ledger
         run: python tests/test_ledger.py
-      - name: Unit tests — LCB synthetic universe
+      - name: Unit tests — CanonBench synthetic universe
         run: python tests/test_universe.py
-      - name: Unit tests — LCB harness
+      - name: Unit tests — CanonBench harness
         run: python tests/test_runner_harness.py
-      - name: Unit tests — LCB batch runner
+      - name: Unit tests — CanonBench batch runner
         run: python tests/test_runner_batch.py
-      - name: Unit tests — LCB metrics & report
+      - name: Unit tests — CanonBench metrics & report
         run: python tests/test_report_metrics.py
-      - name: Unit tests — LCB anti-gaming
+      - name: Unit tests — CanonBench anti-gaming
         run: python tests/test_attacks.py
-      - name: Unit tests — LCB MCP server (hand-rolled, zero deps)
+      - name: Unit tests — CanonBench MCP server (hand-rolled, zero deps)
         run: python tests/test_mcp_server.py

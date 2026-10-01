@@ -1,0 +1,156 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 1472,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "到一半，停了。\n\n她忽然明白，这码头上的每一"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "medium",
+      "evidence": {
+        "actual": 966,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 1,
+        "first_span": "落里一个补网的老太太忽然开口，声音不高：“老"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 875,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "medium",
+      "evidence": {
+        "actual": 563,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": [
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 1472,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "medium",
+      "evidence": {
+        "actual": 964,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch4",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "medium",
+      "evidence": {
+        "actual": 875,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "medium",
+      "evidence": {
+        "actual": 563,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ]
+}

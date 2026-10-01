@@ -31,7 +31,7 @@ _KEY_NAMES = {
 # requests 的 trust_env 默认会继承 macOS 系统代理，把国内域名也一起劫走——
 # 本机实测：方舟经系统代理 127.0.0.1:7897 握手直接 EOF（而 curl 不读系统代理，所以 curl 能通，
 # 于是这个坑只在「代码里跑」时出现，最容易误判成 TLS 版本问题）。
-# 换机器复现时用 LCB_PROXY 覆盖（direct 或一个 http://host:port）。
+# 换机器复现时用 CANONBENCH_PROXY 覆盖（direct 或一个 http://host:port）。
 _PROXY_POLICY = {
     "ark": "direct",        # 国内直连
     "deepseek": "direct",   # 国内直连
@@ -43,17 +43,17 @@ _PROXY_POLICY = {
 def resolve_proxy(provider: str, env: Optional[dict] = None) -> dict:
     """纯函数：算出该通道的代理配置 → {trust_env, proxies, source}。
 
-    LCB_PROXY 优先级最高：
-    - `LCB_PROXY=direct`        全部直连
-    - `LCB_PROXY=http://h:p`    全部走该代理
+    CANONBENCH_PROXY 优先级最高：
+    - `CANONBENCH_PROXY=direct`        全部直连
+    - `CANONBENCH_PROXY=http://h:p`    全部走该代理
     """
     env = os.environ if env is None else env
-    override = (env.get("LCB_PROXY") or "").strip()
+    override = (env.get("CANONBENCH_PROXY") or "").strip()
     if override:
         if override.lower() == "direct":
-            return {"trust_env": False, "proxies": None, "source": "LCB_PROXY=direct"}
+            return {"trust_env": False, "proxies": None, "source": "CANONBENCH_PROXY=direct"}
         return {"trust_env": False, "proxies": {"http": override, "https": override},
-                "source": "LCB_PROXY"}
+                "source": "CANONBENCH_PROXY"}
     if _PROXY_POLICY.get(provider, "system") == "direct":
         return {"trust_env": False, "proxies": None, "source": "policy:direct"}
     return {"trust_env": True, "proxies": None, "source": "policy:system"}

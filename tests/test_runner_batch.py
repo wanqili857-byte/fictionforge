@@ -117,13 +117,13 @@ def test_proxy_policy():
     check("OpenRouter 走系统代理", llm.resolve_proxy("openrouter", {})["trust_env"] is True)
     check("未知通道默认系统代理", llm.resolve_proxy("mystery", {})["trust_env"] is True)
 
-    d = llm.resolve_proxy("ark", {"LCB_PROXY": "direct"})
-    check("LCB_PROXY=direct 覆盖为直连", d["trust_env"] is False and d["proxies"] is None)
-    o = llm.resolve_proxy("ark", {"LCB_PROXY": "http://127.0.0.1:9999"})
-    check("LCB_PROXY 覆盖为显式代理",
+    d = llm.resolve_proxy("ark", {"CANONBENCH_PROXY": "direct"})
+    check("CANONBENCH_PROXY=direct 覆盖为直连", d["trust_env"] is False and d["proxies"] is None)
+    o = llm.resolve_proxy("ark", {"CANONBENCH_PROXY": "http://127.0.0.1:9999"})
+    check("CANONBENCH_PROXY 覆盖为显式代理",
           o["trust_env"] is False and o["proxies"]["https"] == "http://127.0.0.1:9999")
-    check("LCB_PROXY 空串视为未设置",
-          llm.resolve_proxy("ark", {"LCB_PROXY": "  "})["source"] == "policy:direct")
+    check("CANONBENCH_PROXY 空串视为未设置",
+          llm.resolve_proxy("ark", {"CANONBENCH_PROXY": "  "})["source"] == "policy:direct")
 
 
 def test_ark_provider_wiring():

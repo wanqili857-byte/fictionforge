@@ -1,0 +1,152 @@
+{
+  "pre_fix": [
+    {
+      "probe_id": "cons-length-ch1",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 1,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2576,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 4,
+        "first_span": "。\n苏茜看着那个字，突然就懂了。\n老麦当年也"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch2",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 2,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2721,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-forbidden-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 1,
+        "first_span": "\n苏茜看着那箱白盐，突然想起老麦当年在跳板中"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "cons-length-ch3",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 3,
+      "severity": "medium",
+      "evidence": {
+        "actual": 2603,
+        "target": 1900,
+        "span": "1520-2280"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "state-dead-ch4",
+      "type": "state",
+      "detector": "mechanical",
+      "chapter": 4,
+      "severity": "high",
+      "evidence": {
+        "span": "老麦走过的路，柳娘走过的路，现在她走的路，全串在同一只盐箱的木纹里。",
+        "character": "老麦"
+      },
+      "run_id": "batch",
+      "confidence": 0.7,
+      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
+    },
+    {
+      "probe_id": "cons-forbidden-ch5",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "fatal",
+      "evidence": {
+        "word": "突然",
+        "count": 1,
+        "first_span": "顿了顿，指腹下的盐粒突然变得扎人。\n三年前，"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    },
+    {
+      "probe_id": "state-dead-ch5",
+      "type": "state",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "high",
+      "evidence": {
+        "span": "老麦走的那年，盐场的烟囱就再也没冒过烟。",
+        "character": "老麦"
+      },
+      "run_id": "batch",
+      "confidence": 0.7,
+      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
+    },
+    {
+      "probe_id": "state-dead-ch5",
+      "type": "state",
+      "detector": "mechanical",
+      "chapter": 5,
+      "severity": "high",
+      "evidence": {
+        "span": "她知道，接下来要走的路，和老麦、柳娘走过的，是同一条。",
+        "character": "老麦"
+      },
+      "run_id": "batch",
+      "confidence": 0.7,
+      "note": "死者名后出现活动动词（遗物/回忆语境已豁免）"
+    },
+    {
+      "probe_id": "cons-forbidden-ch6",
+      "type": "constraint",
+      "detector": "mechanical",
+      "chapter": 6,
+      "severity": "fatal",
+      "evidence": {
+        "word": "忽然",
+        "count": 5,
+        "first_span": "的浅横线。\n这一眼，忽然勾得她想起今天一早的"
+      },
+      "run_id": "batch",
+      "confidence": 1.0,
+      "note": ""
+    }
+  ],
+  "post_fix": []
+}

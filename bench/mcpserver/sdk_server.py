@@ -28,7 +28,7 @@ except ImportError:      # 未装 SDK / Python < 3.10
     SDKToolError = None
 
 INSTRUCTIONS = (
-    "LCB · 长程叙事一致性基准。提供合成宇宙生成、状态账本、真相表、"
+    "CanonBench · 长程叙事一致性基准。提供合成宇宙生成、状态账本、真相表、"
     "门禁（机械+状态判定）与草稿生成五个工具。除 novel_gen 外均零 LLM、确定性。"
 )
 

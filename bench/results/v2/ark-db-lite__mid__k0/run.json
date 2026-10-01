@@ -1,0 +1,57 @@
+{
+  "_summary": {
+    "billing": "subscription",
+    "chapters_done": 6,
+    "cost": 0.0,
+    "errors": [],
+    "k": 0,
+    "model": "ark-db-lite",
+    "provider": "ark",
+    "proxy": "policy:direct",
+    "run_id": "ark-db-lite__mid__k0",
+    "tier": "mid",
+    "tokens_in": 7750,
+    "tokens_out": 60330,
+    "violations_post_fix": null,
+    "violations_pre_fix": 10
+  },
+  "bench": {
+    "bench_version": "0.1.0",
+    "judge_mechanical_version": "m0.3.0",
+    "judge_semantic_model": "",
+    "judge_semantic_prompt_version": "",
+    "universe_generator_version": "u0.1.0",
+    "universe_seed": 42,
+    "version_name": "CanonBench"
+  },
+  "chapter_paths": {
+    "1": "ch1.md",
+    "2": "ch2.md",
+    "3": "ch3.md",
+    "4": "ch4.md",
+    "5": "ch5.md",
+    "6": "ch6.md"
+  },
+  "cost": {
+    "currency_cost": 0.0,
+    "tokens_in": 7750,
+    "tokens_out": 60330
+  },
+  "generated_at": "2026-10-01T13:16:34.277312+00:00",
+  "harness": "mid",
+  "k_index": 0,
+  "max_tokens": 8192,
+  "model": "doubao-seed-2-1-lite-260915",
+  "notes": "billing=subscription; proxy=policy:direct",
+  "prompt_hashes": {
+    "1": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d",
+    "2": "0bcdaf966cddc1fb53b6f7b9b394201d810a781a4ccada8451f602e58d139762",
+    "3": "782902571cd6051823f8b4edf927ecff5cf3a512a7872b7c0f4ef2dc8ac8f711",
+    "4": "d3a9717779375f9ee2eb3537ca285218fbb70ee43c316c6269a4ffe1bbda9309",
+    "5": "ff5d02b83b2958650aaf2533313fbdf31ca5632856155d9a12c1472baedab011",
+    "6": "b920a4e13ec904ceaed080ed59aa1faa3dc40b9958733bd4ba18b5bc95c92da1"
+  },
+  "provider": "ark",
+  "run_id": "ark-db-lite__mid__k0",
+  "temperature": 0.85
+}
