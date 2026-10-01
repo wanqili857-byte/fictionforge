@@ -235,6 +235,36 @@ def fake_judge(text, chapter):
     return out
 
 
+def test_truncated_chapter_is_error():
+    """被 max_tokens 截断的残章不能当完整章：句子断在半截，判定器没有可测对象，
+    而它会把「字数少」变成密度优势（评审 F6：glm mid 一章 147 字却记 6/6 完成）。"""
+    r = llm.parse_response({"choices": [{"finish_reason": "length",
+                                         "message": {"content": "她推开门，"}}],
+                            "usage": {"prompt_tokens": 10, "completion_tokens": 32768}})
+    check("截断被标记", r["truncated"] is True and r["text"] == "她推开门，")
+    ok = llm.parse_response({"choices": [{"finish_reason": "stop",
+                                          "message": {"content": "她推开门。"}}]})
+    check("正常结束不标截断", ok["truncated"] is False)
+    check("缺 finish_reason 不误判", llm.parse_response(
+        {"choices": [{"message": {"content": "x"}}]})["truncated"] is False)
+
+    u = generate(seed=7, chapters=2)
+    out = Path(tempfile.mkdtemp())
+    class TruncGen(FakeGen):
+        def __call__(self, spec, system, user):
+            r = super().__call__(spec, system, user)
+            r["truncated"] = True
+            r["finish_reason"] = "length"
+            return r
+    res = run_batch(u, ["ds-flash"], tiers=("bare",), k=1, out_dir=out,
+                    generate_fn=TruncGen(text="她推开门，"), judge_fn=fake_judge,
+                    log=lambda *_: None)
+    run = res["runs"][0]
+    check("截断章记为错误", run["errors"] and "截断" in run["errors"][0]["error"])
+    check("截断章不落盘", list((out / "ds-flash__bare__k0").glob("ch*.md")) == [])
+    check("该 run 计为未完成", run["chapters_done"] == 0)
+
+
 def test_call_model_transport_with_stub():
     """网络层打桩：成功路径必须返回 dict，且 200+坏 body 的重试真的可达。
 
@@ -383,6 +413,28 @@ def test_resume_skips_only_completed_runs():
           and r3["runs"][0]["chapters_done"] == 3)
 
 
+def test_resume_verifies_files_not_just_manifest():
+    """续跑不能只信 run.json 自报：文件被删后 manifest 仍声称完成（评审 F9，实测踩到）。"""
+    u = generate(seed=7, chapters=3)
+    out = Path(tempfile.mkdtemp())
+    run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+              generate_fn=FakeGen(), judge_fn=fake_judge, log=lambda *_: None)
+    d = out / "ds-flash__mid__k0"
+    check("首次跑完 manifest 声称完成",
+          json.loads((d / "run.json").read_text(encoding="utf-8"))["_summary"]["chapters_done"] == 3)
+    (d / "ch2.md").unlink()                      # 文件没了，manifest 还在自报完成
+    gen = FakeGen()
+    res = run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+                    generate_fn=gen, judge_fn=fake_judge, log=lambda *_: None)
+    check("manifest 自报完成但文件缺失 → 不跳过", len(gen.calls) > 0)
+    check("重跑后章文件齐", (d / "ch2.md").exists()
+          and res["runs"][0]["chapters_done"] == 3)
+    gen2 = FakeGen()
+    run_batch(u, ["ds-flash"], tiers=("mid",), k=1, out_dir=out,
+              generate_fn=gen2, judge_fn=fake_judge, log=lambda *_: None)
+    check("文件齐了才真跳过", len(gen2.calls) == 0)
+
+
 def test_full_tier_pre_post_and_fix():
     u = generate(seed=7, chapters=2)
     out = Path(tempfile.mkdtemp())
@@ -490,10 +542,12 @@ if __name__ == "__main__":
     test_dashscope_wiring()
     test_channel_gate_fails_fast()
     test_summary_records_billing()
+    test_truncated_chapter_is_error()
     test_call_model_transport_with_stub()
     test_matrix_and_layout()
     test_resume_skips_generation_and_keeps_cost()
     test_resume_skips_only_completed_runs()
+    test_resume_verifies_files_not_just_manifest()
     test_full_tier_pre_post_and_fix()
     test_prior_text_chaining_and_boundary()
     test_error_breaks_but_records()

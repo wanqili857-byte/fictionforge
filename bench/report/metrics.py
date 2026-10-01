@@ -136,7 +136,7 @@ def attribution(rate_by_tier: dict) -> dict:
 
 # ── I/O：装载跑批结果 ─────────────────────────────────────────────────
 
-def gate_contribution(runs: dict) -> dict:
+def gate_contribution(runs: dict, expected_chapters: int = None) -> dict:
     """门禁的真实贡献 = **配对测量**：同一 full 运行内 修前核心 − 修后核心。
 
     为什么不用 mid↔full 差值：那是两次独立生成，差值混着采样噪声
@@ -152,6 +152,13 @@ def gate_contribution(runs: dict) -> dict:
         if r["tier"] != "full" or "post_fix" not in (r["violations"] or {}):
             continue
         if not r["chars"]:
+            continue
+        # 与汇总同一套剔除规则：未完成 / 缺判决 / 章数不足的 run 不进配对统计，
+        # 否则「门禁贡献」会把一次半截运行的修前修后差值算进去（评审 F8）。
+        if is_incomplete(r) or r.get("violations_missing", False):
+            continue
+        done = (r["summary"] or {}).get("chapters_done")
+        if expected_chapters and done is not None and done < expected_chapters:
             continue
         n_runs += 1
         pre = summarize_run(r["violations"].get("pre_fix", []), r["chars"])
@@ -279,7 +286,8 @@ def aggregate_by_model(runs: dict, expected_chapters: int = None) -> list:
             total_rates[tier] = round(sum(totals) / len(totals), 2) if totals else 0.0
             costs += [r["cost"] for r in rs]
         gate = gate_contribution({k: v for k, v in runs.items()
-                                 if v["model"] == model})
+                                  if v["model"] == model},
+                                 expected_chapters=expected_chapters)
         att = attribution(per_tier)
         att.pop("gate_postprocessing", None)   # 用配对测量替代，见 gate_paired
         out.append({

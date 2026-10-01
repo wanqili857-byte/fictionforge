@@ -249,6 +249,27 @@ def test_gate_contribution_counts_fully_cleaned_runs():
           and g["removed"] == 3)
 
 
+def test_gate_contribution_applies_exclusion_rules():
+    """门禁配对测量必须和汇总用同一套剔除规则：半截运行（章数不足）不进配对统计，
+    否则「门禁贡献」里会混进一次残跑的修前修后差值（评审 F8）。"""
+    def run(model, pre, post, done):
+        return {"model": model, "tier": "full", "k": 0, "chars": 2000, "cost": 0.0,
+                "summary": {"model": model, "tier": "full", "k": 0,
+                            "chapters_done": done},
+                "violations": {"pre_fix": [vio("constraint", probe=p) for p in pre],
+                               "post_fix": [vio("constraint", probe=p) for p in post]}}
+    runs = {
+        "full6__full__k0": run("full6", ["cons-forbidden-ch1"] * 3, [], 6),
+        "half__full__k0": run("half", ["cons-forbidden-ch1"] * 5, [], 2),   # 半截
+        "empty__full__k0": run("empty", ["cons-forbidden-ch1"] * 4, [], 0),  # 未完成
+    }
+    g = M.gate_contribution(runs, expected_chapters=6)
+    check("半截与未完成不进配对统计", g["full_runs"] == 1 and g["core_pre"] == 3)
+    g2 = M.gate_contribution(runs)
+    check("不给期望章数时退回旧行为（仅排未完成）",
+          g2["full_runs"] == 2 and g2["core_pre"] == 8)
+
+
 def test_missing_violations_json_is_not_zero_violations():
     """缺 violations.json 的残缺 run 不能以「零违反」身份上榜。"""
     out = Path(tempfile.mkdtemp())
@@ -328,6 +349,7 @@ if __name__ == "__main__":
     test_subscription_cost_not_rendered_as_zero()
     test_leaderboard()
     test_gate_contribution_counts_fully_cleaned_runs()
+    test_gate_contribution_applies_exclusion_rules()
     test_missing_violations_json_is_not_zero_violations()
     test_aggregate_excludes_partial_by_expected_chapters()
     test_load_runs()

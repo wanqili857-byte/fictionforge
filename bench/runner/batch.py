@@ -94,12 +94,17 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
         # **只有真完成才跳过**：带错误中断的 run 也写 run.json（记录 errors 与
         # 已完成章），首轮实测它被当成「已完成」跳过——残缺 run 静默冒充完整结果。
         # 未完成 → 续跑（已有章节文件会逐章跳过，token 不重复烧）。
-        if not prev.get("errors") and prev.get("chapters_done") == len(wanted):
+        # **不信自报**：run.json 可能是在章节文件还在时写的，之后文件被删/丢失
+        # （实测：删掉两条截断章后，run.json 仍声称 6/6，续跑直接跳过 → 磁盘上只有 4 章）。
+        # 完成 = 自报无错 + 章数齐 + **文件真的在** + 判决文件在（评审 F9）。
+        files_ok = all((run_dir / f"ch{ch}.md").exists() for ch in wanted)
+        if (not prev.get("errors") and prev.get("chapters_done") == len(wanted)
+                and files_ok and (run_dir / "violations.json").exists()):
             log(f"  [skip] {run_id} 已完成（force 覆盖重跑 / rejudge 只重判）")
             return prev
         log(f"  [redo] {run_id} 上次未完成"
-            f"（{prev.get('chapters_done')}/{len(wanted)} 章，"
-            f"{len(prev.get('errors') or [])} 错），续跑")
+            f"（自报 {prev.get('chapters_done')}/{len(wanted)} 章，"
+            f"{len(prev.get('errors') or [])} 错，章文件齐={files_ok}），续跑")
         summary_prev = prev
 
     prior_text, prompt_hashes, chapter_paths = "", {}, {}
@@ -165,6 +170,15 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
                 # llm 层已拦空正文；这里再拦一层（注入的生成器可能绕过）
                 errors.append({"chapter": ch, "error": "正文为空（生成器返回空文本）"})
                 log(f"  [error] {run_id} ch{ch}: 正文为空")
+                break
+            if res.get("truncated"):
+                # 被 max_tokens 截断的残章不进库：句子断在半截，判定器没有可测对象，
+                # 而它会把「字数少」变成密度优势（评审 F6：glm mid 一章只有 147 字
+                # 却记为 6/6 完成）。不入库 → 该 run 记为未完成 → 续跑时重生成这一章。
+                errors.append({"chapter": ch,
+                               "error": f"正文被截断（finish_reason="
+                                        f"{res.get('finish_reason')}，{len(text)} 字）"})
+                log(f"  [error] {run_id} ch{ch}: 正文被截断（{len(text)} 字）")
                 break
             ch_file.write_text(text + "\n", encoding="utf-8")
 

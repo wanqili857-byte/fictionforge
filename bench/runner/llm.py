@@ -107,17 +107,22 @@ def parse_response(payload: dict) -> dict:
     except (KeyError, IndexError, TypeError) as e:
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"响应结构异常: {e}"}
+    finish = choice.get("finish_reason")
     if not text.strip():
-        finish = choice.get("finish_reason")
         return {"text": "", "tokens_in": 0, "tokens_out": 0,
                 "error": f"正文为空（finish_reason={finish}，"
-                         f"推理占满 max_tokens？）"}
+                         f"推理占满 max_tokens？）", "finish_reason": finish}
     usage = payload.get("usage") or {}
     return {
         "text": text.strip(),
         "tokens_in": int(usage.get("prompt_tokens") or 0),
         "tokens_out": int(usage.get("completion_tokens") or 0),
         "error": None,
+        # finish_reason=length 表示被 max_tokens 截断：**正文非空也可能没写完**
+        # （实测 glm-flash mid 一章只有 147 字、句子断在半截）。把截断暴露给
+        # 调用方，由它决定是否入库——判定器没法从残缺句子里测出一致性。
+        "finish_reason": finish,
+        "truncated": finish == "length",
     }
 
 

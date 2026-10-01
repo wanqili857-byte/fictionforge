@@ -112,14 +112,14 @@ CATALOG = {
                              "doubao", 0.0, 0.0, max_tokens=8192,
                              billing="subscription"),
     # glm 的 reasoning 计入 max_tokens，且在满 harness prompt 上实测能烧穿
-    # 16384（正赛 full 档 ch2 空正文 finish_reason=length）→ 32768。
-    # 单章推理实测 >420s（mid 档 ch3 三连超时）→ timeout 1200
+    # 16384（full 档 ch2 空正文）→ 32768（mid ch5、full ch6 又被截断成 146/563 字）
+    # → 65536（方舟接受；截断章按错误处理，见评审 F6）。timeout 1800 同时给足。
     "ark-glm-flash": ModelSpec("ark-glm-flash", "ark", "glm-5-3-flash-260828",
-                               "glm", 0.0, 0.0, max_tokens=32768,
-                               billing="subscription", timeout=1200),
+                               "glm", 0.0, 0.0, max_tokens=65536,
+                               billing="subscription", timeout=1800),
     "ark-glm": ModelSpec("ark-glm", "ark", "glm-5-2-260617",
-                         "glm", 0.0, 0.0, max_tokens=32768,
-                         billing="subscription", timeout=1200),
+                         "glm", 0.0, 0.0, max_tokens=65536,
+                         billing="subscription", timeout=1800),
     "ark-ds-flash": ModelSpec("ark-ds-flash", "ark", "deepseek-v4-1-flash-260910",
                               "deepseek", 0.0, 0.0, max_tokens=8192,
                               billing="subscription"),
