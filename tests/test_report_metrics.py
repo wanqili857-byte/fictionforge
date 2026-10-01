@@ -2,7 +2,7 @@
 """
 test_report_metrics.py — W8 指标层单元测试（零 LLM / 零网络）。
 
-覆盖：密度与绝对值成对、按类型计数、pass_k 边界、自助法 CI（固定种子可复现）、
+覆盖：密度与绝对值成对、按类型计数、
 三档归因差值、按模型汇总、表格与 Markdown 渲染、跑批目录装载（含修正稿排除）。
 
 用法:
@@ -70,26 +70,6 @@ def test_family_split():
     check("核心数剔除篇幅", s["core_abs"] == 2)
     check("核心密度按字数", s["core_per_10k"] == 20.0)
 
-
-def test_pass_k():
-    check("全过 = 1.0", M.pass_k([0, 0, 0]) == 1.0)
-    check("全挂 = 0.0", M.pass_k([1, 2, 3]) == 0.0)
-    check("部分 = 比例", M.pass_k([0, 1, 0, 1]) == 0.5)
-    check("空输入 = 0.0", M.pass_k([]) == 0.0)
-
-
-def test_bootstrap_ci():
-    data = [10.0, 20.0, 30.0, 20.0, 20.0]
-    a = M.bootstrap_ci(data, iters=500, seed=1)
-    b = M.bootstrap_ci(data, iters=500, seed=1)
-    check("固定种子可复现", a == b)
-    check("区间包住均值附近", a[0] <= 20.0 <= a[1] and a[0] < a[1])
-    check("空样本 → (0,0)", M.bootstrap_ci([]) == (0.0, 0.0))
-    constant = M.bootstrap_ci([5.0] * 10, iters=200, seed=2)
-    check("常量样本区间退化", constant == (5.0, 5.0))
-
-
-# ── 归因 ──────────────────────────────────────────────────────────────
 
 def test_attribution():
     d = M.attribution({"bare": 30.0, "mid": 18.0, "full": 12.0})
@@ -303,6 +283,52 @@ def test_aggregate_excludes_partial_by_expected_chapters():
           M.aggregate_by_model(runs, expected_chapters=6) == [])
 
 
+def test_render_markdown_footnotes_every_partial_run():
+    """**每一个**部分完成的 run 都要有脚注，不能只解释第一行。
+
+    `rows` 渲染循环里对每个 partial 都打了 ⚠ 行，但脚注循环里有个 `break`，
+    于是两个残缺 run 的报告里只有一条说明，第二行成了没有解释的异常数字
+    （第二轮评审 codex F24）。这条测试是判别性的：`break` 一回来就只剩 1 条。
+    """
+    def run(model, done):
+        return {"model": model, "tier": "bare", "k": 0, "chars": 1000, "cost": 0.0,
+                "summary": {"model": model, "tier": "bare", "k": 0,
+                            "chapters_done": done},
+                "violations": {"pre_fix": [vio("constraint")], "post_fix": []}}
+    runs = {"m1__bare__k0": run("m1", 2), "m2__bare__k0": run("m2", 3)}
+    md = M.render_markdown(M.build_table(runs, expected_chapters=6),
+                           M.aggregate_by_model(runs, expected_chapters=6))
+    check("两个残缺 run 各有脚注",
+          md.count("不参与汇总") == 2)
+
+
+def test_aggregate_passes_derived_expected_to_gate():
+    """`aggregate_by_model` 推导出的期望章数必须**传给**门禁配对，不能传原参数。
+
+    第二轮评审 kimi F8：上一轮只修了「这个函数收不收 expected_chapters」，
+    没修「调用点传的是哪个」。expected_chapters 为 None 时，汇总按最大完成度
+    兜底（≤2 章的算半截踢掉），而门禁拿到 None 就**一条都不剔除**——
+    同一份 runs，两套剔除规则，门禁贡献里混进残跑的差值。
+
+    缺陷在**调用点**，所以这条测试走 aggregate_by_model，而不是直接调
+    gate_contribution（后者拿到 None 时退回旧行为是它的正确语义）。
+    """
+    def run(model, done, k, pre=3):
+        return {"model": model, "tier": "full", "k": k, "chars": 2000, "cost": 0.0,
+                "summary": {"model": model, "tier": "full", "k": k,
+                            "chapters_done": done},
+                "violations": {"pre_fix": [vio("constraint", probe="cons-forbidden-ch1")] * pre,
+                               "post_fix": []}}
+    runs = {"m1__full__k0": run("m1", 6, 0),
+            "m1__full__k1": run("m1", 2, 1)}      # 半截（本批最大完成度是 6）
+    agg = M.aggregate_by_model(runs)               # 不给 expected_chapters
+    a = [x for x in agg if x["model"] == "m1"][0]
+    check("汇总按推导期望剔掉半截", a["core_rate_by_tier"].get("full") is not None)
+    check("门禁配对也用同一套剔除规则（半截不进配对）",
+          a["gate_paired"]["full_runs"] == 1)
+    check("配对只统计完整 run 的修前核心", a["gate_paired"]["core_pre"] == 3)
+
+
 def test_load_runs():
     out = Path(tempfile.mkdtemp())
     d = out / "m1__full__k0"
@@ -336,11 +362,30 @@ def test_load_runs():
     check("空目录返回空", M.load_runs(empty) == {})
 
 
+def test_official_results_json_matches_generator():
+    """入库产物的 universe 块必须与生成器对同一 seed 的输出一致。
+
+    曾经 `results.json` 是**手工拼的**——universe.title 留着测试里的占位串 "T"，
+    于是「官方跑批产物」不是那次跑批写出的那一份（第二轮评审 codex F22）。
+    数字可以重算，身份不能手写。
+    """
+    p = Path(PROJECT_ROOT) / "bench" / "results" / "v2" / "results.json"
+    if not p.exists():
+        print("  SKIP: 入库产物不在")
+        return
+    d = json.loads(p.read_text(encoding="utf-8"))
+    from bench.universe.generator import generate
+    u = generate(seed=d["universe"]["seed"], chapters=d["universe"]["chapters"])
+    check("产物 universe.title 与生成器一致", d["universe"]["title"] == u.title)
+    check("产物 universe.title 不是占位串",
+          d["universe"]["title"] not in ("T", "", None))
+    check("产物的 run 数与目录数一致",
+          len(d["runs"]) == len([x for x in (p.parent).glob("*/run.json")]))
+
+
 if __name__ == "__main__":
     test_rate_and_summary()
     test_family_split()
-    test_pass_k()
-    test_bootstrap_ci()
     test_attribution()
     test_build_table_and_full_uses_post()
     test_aggregate_by_model()
@@ -353,5 +398,8 @@ if __name__ == "__main__":
     test_missing_violations_json_is_not_zero_violations()
     test_aggregate_excludes_partial_by_expected_chapters()
     test_load_runs()
+    test_official_results_json_matches_generator()
+    test_render_markdown_footnotes_every_partial_run()
+    test_aggregate_passes_derived_expected_to_gate()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

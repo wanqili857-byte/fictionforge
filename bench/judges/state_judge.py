@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """bench.judges.state_judge — W3 机械状态判定（确定性，零 LLM）。
 
-输入正文 + StateLedger，输出 Violation[]（type=state）。四检查：
+输入正文 + StateLedger，输出 Violation[]（type=state）。**只判正文**，两检查：
+
   1. dead_resurrection   已死角色在后续章正文中正常活动（过去时/对话豁免）
-  2. timeline_regression 账本时间线倒退（W2 timeline_violations 转 Violation）
-  3. day_contradiction   正文提到的天早于本章锚点天（过去时/对话豁免）
-  4. item_conflict       同一物品声明给两个持有者且无 transfer 注记
+  2. day_contradiction   正文提到的天早于本章锚点天（过去时/对话豁免）
+
+**曾经还有两条——`timeline_regression`（账本时间线倒退）与 `item_conflict`
+（物品双持有无 transfer 注记）——已移出本模块**（第二轮外部评审 kimi F6）。
+理由：那两条**不读正文**，只读 spec 推出的账本，因此对任何模型输出都是常量，
+在 9 个官方 run 里恒定不作为；更糟的是 spec 写错会被记成**模型**违规。
+它们是宇宙自检，归 `bench/universe/generator.py` 的 `invariants()`
+（时间线单调、物品持有变更），那里才是它们能被证伪的地方。
 
 启发式项 confidence < 1.0（机械层无法确证「活动中」vs「被提及」的边界），
 证据带 span 供人工复核——Kappa 校准在 W5 统一做。
@@ -26,7 +32,8 @@
 import re
 
 from bench.contracts import Violation, ViolationType, DetectorKind, Severity
-from bench.judges.text_utils import narration, sentences, has_past_marker
+from bench.judges.text_utils import (narration, sentences, has_past_marker,
+                                     hard_past_marker, first_soft_marker)
 
 _DAY_RE = re.compile(r"第\s*([0-9]+|[一二三四五六七八九十]+)\s*天")
 _VIOL_CH_RE = re.compile(r"第(\d+)章")
@@ -97,11 +104,24 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
             if not narr.strip():
                 continue
             for sent in sentences(narr):
-                if has_past_marker(sent) or _MEMORIAL_RE.search(sent):
+                if hard_past_marker(sent) or _MEMORIAL_RE.search(sent):
                     continue
+                soft_at = first_soft_marker(sent)
                 for name in sorted(dead):
                     idx = sent.find(name)
                     if idx < 0:
+                        continue
+                    # 软标记（时间副词/比喻词）豁免的是**它管辖的那个动作**，不是整句。
+                    # 判法：比较软标记位置与**动作动词**位置——
+                    #   标记在动作之前 → 它限定这个动作 → 闪回/比喻，豁免
+                    #     「**当时**老麦走过来」/「老麦**当年**也走到过这一步」/「就像三年前
+                    #     站在跳板中间的**老麦**那样」
+                    #   标记在动作之后 → 它管的是别的东西，动作发生在当下 → 不豁免
+                    #     「老麦走进来，说起了**当年**的事」/「老麦走进来，**像**往常一样…」
+                    # 只比「标记 vs 名字」是不够的：上面三个豁免例里有两个的标记在名字**之后**
+                    # （老麦当年…／老麦当时蹲在这），那两条会变成真实语料上的误报
+                    # （入库语料实测 3 条，见 bench/calib/corpus_control.py 的 clean_hits）。
+                    if 0 <= soft_at < idx:
                         continue
                     pre = sent[max(0, idx - 4):idx]      # 显形动词可在名字前：出现老周
                     tail = sent[idx + len(name): idx + len(name) + 8]
@@ -116,34 +136,35 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                         continue
                     if tail.startswith("的") and "身影" not in tail and "出现" not in pre:
                         continue                          # 领格：老麦的X
-                    # 活动动词后面若紧跟「的 / 过的 / 了的」，那是**关系从句**在修饰名词，
-                    # 不是死者在做动作：「老麦走过的路」「老麦走的那年」「老麦问的那些」。
-                    # 出厂产物里 4 条 state-dead 全是这一形态（评审 F2 揪出）。
+                    # 关系从句：动词后面紧跟「的」或「<补语>的」，说明这个动词在修饰
+                    # 名词而不是在叙述动作——「老麦走过的路」「老麦蹲着的那块跳板」
+                    # 「老麦没走完的路」。出厂产物里 4 条 state-dead 全是这一形态
+                    # （评审 F2 揪出）；`着+的`（第二轮 doubao）与 `<补语>的`
+                    # （本轮入库语料对照实测）是同一类的漏网形态。
                     hit = False
                     for m in re.finditer("|".join(re.escape(v) for v in _ACTIVITY_VERBS), tail):
-                        if re.match(r"(?:过|了)?的", tail[m.end():]):
+                        vpos = idx + len(name) + m.start()
+                        if 0 <= soft_at < vpos:
+                            continue                      # 软标记管辖这个动作 → 闪回/比喻
+                        if re.match(r"(?:[着过了]|[进出到完起开回上下得]{1,2})?的",
+                                    tail[m.end():]):
                             continue                      # 关系从句 → 不作数
                         hit = True
                         break
                     # 动作也可以落在名字**前面**的谓语上（「门口站着老周」「出现老周的身影」）。
                     # 这一条必须放在从句豁免之后：「看着老周走过的路」里 看着 是活的，
                     # 但死者仍是关系从句的中心语，不该报。
-                    if not hit and _PRE_AGENT_RE.search(pre):
-                        hit = True
+                    pre_m = _PRE_AGENT_RE.search(pre)
+                    if not hit and pre_m:
+                        ppos = max(0, idx - 4) + pre_m.start()
+                        if not (0 <= soft_at < ppos):
+                            hit = True
                     if hit:
                         out.append(V("state-dead", Severity.HIGH,
                                      {"span": sent[:50], "character": name},
                                      confidence=0.7,
                                      note="死者名后出现活动动词"
                                           "（遗物/回忆/关系从句已豁免）"))
-
-    # 2. 时间倒流：账本自身的时间线违规（只报本章及之前）
-    for vtext in ledger.timeline_violations():
-        m = _VIOL_CH_RE.search(vtext)
-        if m and int(m.group(1)) <= chapter:
-            out.append(V("state-timeline", Severity.HIGH,
-                         {"span": vtext}, confidence=1.0,
-                         note="spec 锚点时间线倒退"))
 
     # 3. 日期矛盾：正文提到的天早于本章锚点天
     cur = ledger.chapter(chapter)
@@ -166,23 +187,5 @@ def state_judge(text: str, ledger, chapter: int, run_id: str,
                                       "anchor_day": anchor_day},
                                      confidence=0.8,
                                      note="正文天数早于本章锚点天"))
-
-    # 4. 物品双持有：同物品先后声明给不同持有者，且该章无 transfer 注记
-    holders = {}
-    for c in sorted(ledger.chapters, key=lambda x: x.chapter):
-        for item, holder in c.possessions.items():
-            holders.setdefault(item, []).append((c.chapter, holder, c))
-    for item, seq in sorted(holders.items()):
-        prev_holder = None
-        for ch_no, holder, cobj in seq:
-            if prev_holder is not None and holder != prev_holder:
-                if item not in (cobj.transfers or []) and ch_no <= chapter:
-                    out.append(V("state-item", Severity.HIGH,
-                                 {"span": f"{item}: {prev_holder} → {holder}",
-                                  "item": item, "from": prev_holder,
-                                  "to": holder, "chapter": ch_no},
-                                 confidence=0.8,
-                                 note="持有者变更无 transfer 注记"))
-            prev_holder = holder
 
     return out

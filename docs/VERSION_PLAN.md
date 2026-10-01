@@ -54,3 +54,12 @@
 - **v0.3.0**（2026-08-30）— 修订感知管线：canon/drafts 分家、promote/distill 修订回灌、M4 局部重生成、spec-canon 漂移注记、DESIGN 五铁律
 - **v0.1.1**（2026-08-06）— 第二版·框架可用性优化：外挂内容包、divergence_vibe 接线、CI 双套件、README 修正
 - **v0.1.0**（2026-08-02）— FictionForge 第一版：双管线（gen.py + engine）、引擎 Agent 强化、框架/内容解耦、公开 sanitize
+
+## 由第二轮外部复核移出的项（落地时再加回来）
+
+- `pass_k` / `bootstrap_ci`（`bench/report/metrics.py`）：第二轮被指出「有实现、有单测、
+  零调用」，已删除。**k≥3 归因落地时重新引入并真正接线**——在那之前它是死代码。
+  删除记录见 `reviews/dispose.md` 2-12。
+- 状态轴要想在语料上产生区分度，需要**更长、角色更多、注入更难**的语料
+  （当前 6 章 × 3 厂商全部零命中，见 `docs/canonbench-corpus-control.md`）。
+  这是 v0.5 的语料设计问题，不是判据问题。

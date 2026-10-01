@@ -17,7 +17,7 @@
   },
   "bench": {
     "bench_version": "0.1.0",
-    "judge_mechanical_version": "m0.4.0",
+    "judge_mechanical_version": "m0.5.0",
     "judge_semantic_model": "",
     "judge_semantic_prompt_version": "",
     "universe_generator_version": "u0.1.0",
@@ -42,7 +42,7 @@
   "k_index": 0,
   "max_tokens": 8192,
   "model": "doubao-seed-2-1-lite-260915",
-  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:09:15.604353+00:00",
+  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:53:59.650487+00:00",
   "prompt_hashes": {
     "1": "9fa539a83223a8137b44c215be0ff8bf37ce928dd52a5fb77cc737347db7342d",
     "2": "0bcdaf966cddc1fb53b6f7b9b394201d810a781a4ccada8451f602e58d139762",

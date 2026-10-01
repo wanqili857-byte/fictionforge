@@ -189,6 +189,27 @@ def _mutate_no_held_out():
     return mutate
 
 
+def _mutate_posthumous_mention():
+    """把死者名字写进他死后某一章的 section 描述里（账本会把他记为「在场」）。"""
+    def mutate(u):
+        dead = next(c for sp in u.specs
+                    for c in (sp.get("state_delta") or {}).get("deaths", []))
+        dch = next(sp["chapter"] for sp in u.specs
+                   if dead in (sp.get("state_delta") or {}).get("deaths", []))
+        later = next(sp for sp in u.specs if sp["chapter"] > dch)
+        later["sections"][0]["description"] = f"{dead}把盐箱推到栈桥边上。"
+    return mutate
+
+
+def _mutate_item_conflict():
+    """让同一物品先后落到两个持有者手里，且中间章没有 transfer 注记。"""
+    def mutate(u):
+        a, b = [c["name"] for c in u.cast[:2]]
+        u.specs[0].setdefault("state_delta", {}).setdefault("items", {})["旧终端"] = a
+        u.specs[1].setdefault("state_delta", {}).setdefault("items", {})["旧终端"] = b
+    return mutate
+
+
 def test_every_invariant_can_fail():
     """每条不变量各配一个阴性对照：人为改坏 → 必须被抓到。
 
@@ -239,6 +260,27 @@ def test_every_invariant_can_fail():
              next(c for sp in u.specs
                   for c in (sp.get("state_delta") or {}).get("deaths", []))),
          "死后仍获知"),
+        # 下面四条是第二轮外部评审补的（kimi+doubao F2）：「为**每条**不变量
+        # 补阴性对照」当时不成立——14 个失败分支只覆盖了 10 个，缺的正是这四条。
+        ("expanded 节数 != 1",
+         # 把**那个** expanded 节降级（不能写死下标：sections[0] 本来就是 expanded，
+         # 再赋一次是同值 no-op，阴性对照会假绿——这条第一次就踩了）
+         lambda u: [s for s in u.specs[0]["sections"]
+                    if s.get("weight") == "expanded"][0]
+                   .__setitem__("weight", "normal"),
+         "expanded 节数"),
+        ("存在无锚点节",
+         lambda u: u.specs[0]["sections"][0].__setitem__("scene_anchor", ""),
+         "无锚点节"),
+        ("锚点时间线非单调",
+         lambda u: u.specs[0]["sections"][0].__setitem__(
+             "scene_anchor", f"第{u.chapters + 3}天上午 @码头"),
+         "时间线"),
+        # 物品双持有：从 model judge 搬进宇宙自检的那条（kimi F6）
+        ("物品持有变更无 transfer 注记", _mutate_item_conflict(), "transfer"),
+        # 死者死后在 spec 描述里被当成行动者点名——原来只有 test_state_judge
+        # 那条路径旁证，`cases` 里没有，覆盖计数一开就露了
+        ("死者在死后章节被点名", _mutate_posthumous_mention(), "被当作行动者点名"),
     ]
     for label, mutate, expect in cases:
         u = fresh()
@@ -248,6 +290,16 @@ def test_every_invariant_can_fail():
 
     # 未改动的宇宙必须自洽（避免上面那些 lambda 顺手把正常路径也弄坏）
     check("未改动宇宙仍自洽", invariants(fresh()) == [])
+
+    # **覆盖计数**：阴性对照的条数必须 ≥ invariants() 的失败分支数。
+    # 没有这条，删掉几个对照用例测试照样绿——「为每条不变量补阴性对照」
+    # 这句声明就只是声明（第二轮评审 kimi+doubao F2 正是这么抓到的：
+    # 当时 14 个分支只覆盖 10 个，`expanded 节数`/`无锚点节`/`锚点时间线` 三条无对照）。
+    import inspect
+    src = inspect.getsource(invariants)
+    branches = src.count("out.append(")
+    check(f"阴性对照覆盖全部分支（{len(cases)} 例 ≥ {branches} 分支）",
+          len(cases) >= branches)
 
 
 # ── 落盘 ↔ 解析往返 ───────────────────────────────────────────────────

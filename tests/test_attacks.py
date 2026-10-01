@@ -18,6 +18,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+from bench.attacks.attacks import BASELINE_TEXT
 from bench.attacks.attacks import (
     inflate, duplicate, jargon_bomb, duplicate_ratio, fingerprint,
     measure, run_attack,
@@ -45,21 +46,11 @@ def judge(text, chapter=1):
     return mechanical_judge(text, RULES, run_id="atk", chapter=chapter)
 
 
-# 不重复的基线文本（约 300 字）——若基线自身就重复，攻击前的重复率就不是 0 了
-BASE = "\n".join([
-    "她忽然停住，看着货棚的门。",
-    "门开了一条缝，里面有人低声说话。",
-    "她没有动，数着脚下的木板缝。",
-    "潮气从缝里往上冒，带着铁锈味。",
-    "远处有人卸货，绳子磨着船舷。",
-    "她把袖子往上推了推，露出腕上的旧疤。",
-    "那疤是去年冬天留下的，她自己都快忘了。",
-    "门里的话断断续续，听不真切。",
-    "她退后半步，脚跟先着地，没出声。",
-    "货棚侧面有一排木箱，箱盖上写着编号。",
-    "她记得那些编号，昨天的和今天的不一样。",
-    "于是她转身，往码头东边走。",
-])
+# 基线文本直接引用包里的那一份——**不许手抄**。
+# 这里曾是第二份手抄拷贝（连注释里的字数都是错的：写「约 300 字」，实际 189），
+# 而 `bench/attacks/attacks.py` 的注释明写「公开数字的输入必须只有一份」。
+# 两份拷贝一旦漂移，测试测的就不是文档公布的那个基线了。
+BASE = BASELINE_TEXT
 
 
 # ── 攻击变换 ──────────────────────────────────────────────────────────

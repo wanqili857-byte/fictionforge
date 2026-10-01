@@ -141,11 +141,37 @@ def test_attack_table_shares_baseline_with_docs():
         check(f"页面含 §8 实测值 {expected}", expected in page)
 
 
+def test_series_colors_defined_for_any_roster():
+    """每个模型都要拿到**已定义**的颜色变量，且互不相同（第一轮 doubao S15）。
+
+    旧版把 `--s1..--s3` 写死在 CSS、`SERIES` 定义了却从不引用：第 4 个模型
+    （协议明确欢迎外部提交）取 `var(--s4)` 时变量不存在，柱与图例色块一起
+    退化成默认色，**两处互相不可区分**。当时 3 个模型未触发，于是漏了。
+    """
+    css = H._css()
+    defined = set(re.findall(r"(--s(?:-over|\d+)):", css))
+    check("CSS 里的系列色变量由 SERIES 生成（不是写死三个）",
+          {"--s1", "--s2", "--s3", "--s4"} <= defined)
+    for n in (3, 4, 6, 7):
+        models = [f"ark-m{i}-flash" for i in range(n)]
+        cols = [H.series_color(m, i) for i, m in enumerate(models)]
+        names = {c[len("var("):-1] for c in cols}
+        check(f"{n} 个模型全部有已定义颜色", names <= defined)
+        check(f"{n} 个模型颜色互不相同", len(set(cols)) == n)
+    # 超过槽位不循环配色：一律归到中性 --s-over，宁可不可区分也不撞色
+    many = [H.series_color(f"ark-x{i}", i) for i in range(9)]
+    check("超出槽位归到 --s-over 而非循环", many[-1] == "var(--s-over)")
+    # 颜色跟随**身份**：同名模型换个名次仍是同一个颜色
+    check("颜色跟随模型身份而非名次",
+          H.series_color("ark-glm-flash", 0) == H.series_color("ark-glm-flash", 2))
+
+
 if __name__ == "__main__":
     test_chart_geometry()
     test_chart_zero_and_single_series()
     test_page_structure_and_no_external_assets()
     test_page_numbers_match_metrics()
     test_attack_table_shares_baseline_with_docs()
+    test_series_colors_defined_for_any_roster()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

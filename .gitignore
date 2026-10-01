@@ -7,3 +7,6 @@ temp/
 # 跑批产物（真实 LLM 输出，体积大；报表另行选择性提交）
 runs/
 reviews/out/
+
+# 本地生成的榜单页（CI 生成到 _site/，不进仓库）
+bench/results/v2/index.html

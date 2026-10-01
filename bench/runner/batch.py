@@ -38,7 +38,7 @@ BENCH_VERSION = "0.1.0"
 # m0.3.0：对话行改用 narration() 剥引文（旧实现整行跳过，吞掉行内引号后的旁白）
 # m0.4.0：死者活动判据补三类豁免（定语从句中心语 / 关系从句 / 存现动词限定），
 #         并补「年前」类相对时间标记——修掉出厂产物里 4 条误报（评审 F2）
-JUDGE_MECHANICAL_VERSION = "m0.4.0"
+JUDGE_MECHANICAL_VERSION = "m0.5.0"
 
 DEFAULT_PARA_MAX = 100
 DEFAULT_PRIOR_TAIL = 1200
@@ -201,6 +201,13 @@ def run_one(u, model_spec, tier: str, k_index: int, out_dir: Path,
     # generated_at 是**首次生成**的时间；重判会重写 manifest，若照写 now() 就把
     # 「生成时间」变成了「最后一次写入时间」（评审 F15）。所以优先沿用旧值，
     # 重判时间另记。
+    #
+    # **这个字段证明不了跑批日期**（第二轮评审 kimi F7）：它能沿用的前提是
+    # 上一次的 manifest 还在。入库产物是分批跑完后合并落盘的，首次写入就已经是
+    # 合并那一刻——实测 9 个 run 的 generated_at 全落在同一秒内（15:04:30.409~
+    # .442），而跑批实际发生在 09-26/27。原始日期在产物里**不可恢复**，
+    # 只存在于文档叙述里。所以：跨版本核对只能用 judge_mechanical_version，
+    # 不要拿 generated_at 当跑批日期。
     prev_manifest = {}
     mpath = run_dir / "run.json"
     if mpath.exists():

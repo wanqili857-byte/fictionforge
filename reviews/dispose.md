@@ -106,3 +106,111 @@
 | 14 | 单家独有 | 🟠 | `bench/calib/real_text.py`（方法论证） | 「孪生句只差一个词，故差异只来自判据」的论证前提不成立（注入也改了段落结构） | 加**中性注入对照**：同位置插一句无害句，增量必须为 0 | `grep -q 'NEUTRAL_SENTENCE' bench/calib/real_text.py` | ✅ |
 | 16 | 单家独有 | 🟡 | `.github/workflows/ci.yml`、`docs/canonbench-writeup.md` | CI 计数与 CHANGELOG 不符；`test_mcp_sdk` 不在 CI（本地无 SDK 时自我 SKIP → 「绿」掩盖「没跑」）；writeup 把 full 档描述成含「状态回写/返修篇幅」，实现里没有 | MCP SDK 版单列一个 py3.12 job；CHANGELOG 计数改为不写死；writeup 改为「门禁只做减法，不做状态回写」 | `grep -q 'mcp-sdk' .github/workflows/ci.yml` | ✅ |
 | 12 | 单家独有 | 🟢 | `reviews/review.yaml` | 审核员被权限白名单卡住（三家全 FAILED 主因）；codex 标题式结论被判 0 条 | 第二轮配置放行本地只读脚本；工单强制表格格式 | `grep -qE 'allowedTools\|permission' reviews/review.yaml && grep -q '严重度表' reviews/brief.md` | ⬜ |
+
+---
+
+# 第二轮（2026-10-01/02）——从「审计结论」升级到「审计前提」
+
+> 第一轮工单问的是「你自称的保证是不是真的」。第二轮加了三条：
+> **① 放行本地只读脚本**（上一轮两家被权限白名单挡住，最强的可执行验证一条没跑成）；
+> **② 强制结论表格**（上一轮 codex 用标题式，门禁解析 0 条）；
+> **③ 审上一轮那份台账本身**。
+
+## 六、谁审的
+
+| 审核员 | harness | 模型 | vendor | role | 结果 |
+|---|---|---|---|---|---|
+| kimi | `claude -p`（方舟 Anthropic 兼容端点） | kimi-k2.7-code | moonshot | primary | **ok · 9 条** |
+| doubao | `claude -p`（同一端点） | doubao-seed-2-1-pro | bytedance | primary | **ok · 8 条** |
+| codex | `codex exec -s read-only` | deepseek-v4-flash | deepseek | cross | **ok · 13 条** |
+
+三家全部过门禁——**上一轮的两处阻断（权限白名单、结论格式）确实是主因**：
+上游 quorum 补了 `channels.*.args` 与硬输出契约之后，同样的模型立刻交得出东西。
+
+## 七、quorum 报的「材料快照不一致」是**假警报**——而且它自己就是发现
+
+`quorum plate` 打红旗：kimi 审的是 `git:4ce3d64b`，另两家是 `git:424503f2`，
+同一 HEAD、工作区干净、文件数都是 184，却不同指纹。查下去：
+
+| 时刻 | 事件 |
+|---|---|
+| 23:19:22 | 提交 85ad4f1（三家的 HEAD 都是它） |
+| 23:19:2x | kimi 取快照，工作区干净 |
+| **23:19:29** | `bench/universe/__pycache__/generator.cpython-312.pyc` 被重写 |
+| 23:31 / 23:37 | doubao / codex 取快照 |
+
+**材料一个字没动，动的是一个 `.pyc` 生成物**，而它被算进了材料指纹——
+`snapshot_exclude: ["__pycache__"]` 从来没生效过：`_excluded` 对非 glob 模式
+只按**仓库根前缀**匹配，`__pycache__` 这种「到处都有」的名字只能命中根目录那一个，
+嵌套的 19 个 `.pyc` 全部漏网（旧版修过同一类的第一处，这是第二处）。
+**假警报和真警报长得一模一样**，这次纯靠人肉查出来。已提上游补丁 + 判别性测试。
+
+> 教训写在这里：审计工具自己也是被测对象。第一次是它抓出我台账里 8 条装饰性断言，
+> 这次是我查出它一个静默失效的配置项。
+
+## 八、发现汇总与核验（25 簇 → 逐条核）
+
+**最重的一条（codex F16 + kimi F6，两家独立，均已在本地复算证实）**：
+入库的 9 个官方 run 里，**状态轴零命中**。全部 60 条修前判决 = 禁词 29 / 篇幅 22 /
+段落 6 / 视角 3，**状态/知识边界/上下文腐坏 0 条**。也就是说：一个叫「长程一致性」
+的基准，榜单排序实际由文体与篇幅决定。而 `core_*` 的定义里明写着
+「即叙事一致性（状态/视角/文体/知识边界）」。
+
+处理**不是**改措辞：补**语料级对照**，把「零命中是观测还是判据失效」量出来——
+正例注入 189/189 全中、孪生负例 0/189 误报。结论因此变成可站住的两句话：
+判据是活的；**这 6 章语料在一致性轴上没有区分度**。
+
+## 九、处置台账（第二轮）
+
+> 判定标准与第一轮相同：**把这个修复回滚，这条 check 会不会红？**
+> 本轮 16 行 check **逐条做过回滚实验**（见下），红的一律贴出来。
+
+| # | 置信度 | 严重度 | 位置 | 问题 | 处置 | check | status |
+|---|---|---|---|---|---|---|---|
+| 2-1 | 跨模型族一致（三家） | 🔴 | `README.md`、`docs/canonbench-writeup.md` | 已被作者公开撤回的「状态类判据零误报」仍写在首屏与方法文诚实清单里 | 两处改写为「召回与豁免有证据、误报率未测」，并指向语料级对照 | `! grep -qE '状态类判据.{0,6}零误报' README.md docs/canonbench-writeup.md` | ✅ |
+| 2-2 | 单家 kimi | 🔴 | `bench/report/html.py` | 榜单页**现算**的数字与写死的结论卡自相矛盾：卡片仍渲染已撤回的 glm 反转头条 | 卡片改为**从数据现算**（`_harness_finding`），另加状态轴贡献卡（`_state_axis_card`） | `! grep -q '反直觉发现' bench/report/html.py` | ✅ |
+| 2-3 | 单家 kimi | 🔴 | `bench/judges/state_judge.py` | 四条状态探针里两条**不读正文**（只读账本=spec），对任何模型恒定；spec 写错会被记成模型违规 | 移出模型判据，归 `generator.invariants()`；补物品持有不变量 | `python3 tests/test_state_judge.py` | ✅ |
+| 2-4 | 单家 codex | 🔴 | `bench/calib/` | 状态轴零命中在产物里**分不出**「判据失效」还是「语料没有」 | 新增 `corpus_control.py`：入库语料上的正/负对照；进 CI、进页面、进文档 | `python3 tests/test_corpus_control.py` | ✅ |
+| 2-5 | 跨模型族（kimi+doubao） | 🟡 | `tests/test_universe.py`、`bench/universe/generator.py` | 上一轮台账称「为**每条**不变量补阴性对照」不成立：14 个失败分支只覆盖 10 个 | 补 4 条对照（expanded 节数/无锚点节/锚点时间线/物品 transfer）+ **覆盖计数断言** | `python3 tests/test_universe.py` | ✅ |
+| 2-6 | 单家 doubao | 🟡 | `bench/judges/state_judge.py` | 关系从句豁免只认 `(过|了)?的`，漏 `着+的`：「老麦蹲着的那块跳板」被判成复活 | 豁免正则收到 `(?:[着过了]|[进出到完起开回上下得]{1,2})?的`；负对照 36/36 → 0/36 | `python3 tests/test_corpus_control.py` | ✅ |
+| 2-7 | 单家 doubao | 🟡 | `bench/judges/text_utils.py` | 过去时豁免过宽：`当时/以前/当年/曾经` 与比喻词同属整句豁免，吞掉真复活 | 标记分**硬/软**两类；软标记只豁免**它管辖的那个动作**；相对时间跨度（三年前）算硬标记 | `python3 tests/test_corpus_control.py` | ✅ |
+| 2-8 | 单家 doubao | 🟡 | `docs/canonbench-calibration.md`、`bench/calib/real_text.py` | 「孪生句只差一个词，故差异只来自判据」是假的（原文给的反例自己就不成立），F5 的处置没订正它 | 措辞改为「同载体、同位置、同插入长度」，并写明死人复活那一对差的是**谓语类型** | `grep -q '同载体、同位置、同插入长度' docs/canonbench-calibration.md bench/calib/real_text.py` | ✅ |
+| 2-9 | 单家 codex | 🟡 | `bench/report/metrics.py` | 「不参与汇总」脚注循环里 `break`，多个残缺 run 只有一个有说明 | 去掉 `break`；补两残缺 run 的判别性测试 | `python3 tests/test_report_metrics.py` | ✅ |
+| 2-10 | 单家 codex | 🟡 | `bench/results/v2/results.json` | 入库的「官方产物」汇总**不是那次跑批写出的那一份**：`universe.title` 是占位串 `"T"`（手工拼的） | 重判重写为真标题；加身份测试（title 必须等于生成器同 seed 的输出） | `python3 tests/test_report_metrics.py` | ✅ |
+| 2-11 | 单家 doubao/codex | 🟡 | `tests/test_attacks.py` | 抗刷分基线在测试里是**第二份手抄拷贝**，与包内注释「公开数字的输入必须只有一份」矛盾 | 改为 `BASE = BASELINE_TEXT`（引用，不抄） | `grep -q 'BASE = BASELINE_TEXT' tests/test_attacks.py` | ✅ |
+| 2-12 | 单家 codex | 🟡 | `bench/report/metrics.py` | `pass_k` / `bootstrap_ci` 有实现、有单测、**零调用**（与当初 `leaderboard` 同一个病） | 删除；k≥3 落地时按需重引入（记入 `VERSION_PLAN.md`） | `! grep -q 'def pass_k' bench/report/metrics.py` | ✅ |
+| 2-13 | 单家 kimi | 🟡 | `bench/calib/real_text.py` | `needs_entity_in_corpus` 声明 5 处、**读取 0 处**：可测性标注从未进结论 | 接线到 `baseline_is_evidence`，渲染表加「基线是证据的文本」列 | `python3 tests/test_calib.py` | ✅ |
+| 2-14 | 单家 kimi+codex | 🟡 | `docs/canonbench-writeup.md` | 同一节自相矛盾：表头写判定器 m0.4.0，注解 5 写「本表为 m0.3.0」 | 统一为判决链 m0.1.0→m0.4.0→m0.5.0，并写明 m0.4.0→m0.5.0 对本批产物**逐条零差异** | `! grep -q '本表为 .m0.3.0.' docs/canonbench-writeup.md` | ✅ |
+| 2-15 | 单家 kimi | 🟢 | `docs/canonbench-writeup.md` | 正文说术语轰炸「重复率 0.09」，同节表格写 0.00 | 实测复算为 **0.00**（40 个双字词各不相同），改正文 | `! grep -q '重复率 0.09' docs/canonbench-writeup.md` | ✅ |
+| 2-16 | 单家 kimi | 🟡 | `bench/report/metrics.py` | F8 修得不完整：`aggregate_by_model` 推导出的期望章数没传给门禁配对，同一份 runs 两套剔除规则 | 调用点改传**推导后**的 `expected`；补走 `aggregate_by_model` 的判别性测试 | `python3 tests/test_report_metrics.py` | ✅ |
+| 2-17 | 单家 kimi | 🟡 | `bench/runner/batch.py`、`docs/BENCH_PROTOCOL.md` | `generated_at` 在入库产物里全被刷成同一次合并时刻，与文档写死的跑批日期矛盾 | 原始日期**不可恢复**，故改为写明字段语义：它不是跑批日期，跨版本核对用 judge 版本；协议加字段表 | `grep -q '不能当跑批日期' docs/BENCH_PROTOCOL.md` | ✅ |
+| 2-18 | 单家 doubao（**第一轮漏项**） | 🟢 | `bench/report/html.py` | `SERIES` 定义后从未被引用，CSS 只定义 `--s1..--s3`，第 4 个模型起颜色变量不存在 → 柱与图例一起退化 | 颜色改为**由 SERIES 生成**（`_css()`/`series_color()`），颜色跟随模型身份；超槽位归 `--s-over`，不循环配色 | `python3 tests/test_report_html.py` | ✅ |
+| 2-19 | 上游 quorum | 🟡 | `quorum/snapshot.py` | `_excluded` 对非 glob 模式只按仓库根前缀匹配，嵌套 `__pycache__` 全部漏网（本轮假警报成因） | 改为**路径段**匹配（相等/前缀/后缀/中间）；补判别性测试 | `cd /Users/ayu/ayu/quorum && python3 -m pytest tests/test_quorum.py -q` | ✅ |
+
+### 回滚实验记录（本轮 check 的判别性证据）
+
+| 回滚什么 | 期望 | 实测 |
+|---|---|---|
+| 关系从句豁免退回 `(过|了)?的` | 红 | 红（负对照 着+的 转红） |
+| 相对时间跨度退回软标记 | 红 | 红 |
+| 软标记退回「句内出现即豁免」 | 红 | 红（两个正例转 0） |
+| 差分口径退回 probe_id 集合 | 红 | 红 |
+| 脚注循环 `break` 回来 | 红 | 红 |
+| 删一条不变量阴性对照 | 红 | 红（覆盖计数 14 < 15） |
+| 可测性字段写死 `True` | 红 | 红 |
+| 颜色退回 `var(--s1)` | 红 | 红 |
+| `gate_contribution` 传回原参数 | 红 | 红 |
+| `results.json` title 改回 `"T"` | 红 | 红 |
+| quorum `_excluded` 退回根前缀 | 红 | 红 |
+
+### 未处置 / 待复核（如实列出，不装作都修了）
+
+| 发现 | 状态 |
+|---|---|
+| codex F17「至少一条 held-out 事实」恒真 | **未复现**：`_mutate_no_held_out()` 确实能让该分支开火，`test_every_invariant_can_fail` 里已有该用例 |
+| codex F18 校准报表层混用两种计数口径 | **未复核**（第二轮新增的 `baseline_evidence_n` 只处理了可测性，口径统一另开） |
+| codex F13 死人复活判据漏报远不止比喻词（构造 17 条真复活，7 条漏） | **部分修**：本轮修了软标记管辖问题；封闭动词表（34 词）未动，语料级正对照的 4 种句式全中说明常见形态没问题，边角形态仍是已知漏报 |
+| codex F21 台账漏记第一轮 doubao 的 S12/S14/S15 | 已在本轮补记为 2-11（基线）/2-18（配色）；S14（449 KB）随 2-10 一并处理（README 去掉写死体积） |
+| codex F3「文档里的复现命令跑不出文档里的数字」 | **部分**：README 的「30 秒跑一遍」与 `bench.calib.corpus_control` 已实测可跑；其余命令待逐条跑一遍 |
+| 知识边界 / 上下文腐坏两条轴 | **仍未实装**（W4/W5），第二轮没有新的处置 |
+

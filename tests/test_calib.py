@@ -159,6 +159,30 @@ def test_no_decoy_kinds_declared():
     check("禁词类显式声明无诱饵", f["decoy"] is None)
 
 
+def test_measurability_flag_is_actually_read():
+    """`needs_entity_in_corpus` 必须**被读**，不能只声明。
+
+    第二轮评审的账：这个字段声明 5 处、读取 0 处——于是「注入前零命中」的
+    可测性从来没进过结论。现在它经 `baseline_is_evidence` 进汇总与渲染。
+    这条测试是**判别性**的：名字不在语料里时必须 False，在时必须 True。
+    """
+    res = R.calibrate_texts([("no-name", CARRIER)], chapter=2)
+    row = res["rows"][0]
+    check("语料无探针名 → state-dead 基线不算证据",
+          row["probes"]["state-dead"]["baseline_is_evidence"] is False)
+    check("不需要实体的判据基线仍是证据",
+          row["probes"]["cons-para"]["baseline_is_evidence"] is True)
+    check("汇总带每类的基线证据数",
+          res and R.summarize(res)["kinds"]["state-dead"]["baseline_evidence_n"] == 0)
+
+    withname = CARRIER + f"\n{R.PROBE_DEAD}站在码头边上，没说话。"
+    res2 = R.calibrate_texts([("has-name", withname)], chapter=2)
+    check("语料含探针名 → 基线算证据",
+          res2["rows"][0]["probes"]["state-dead"]["baseline_is_evidence"] is True)
+    check("汇总里基线证据数随之变化",
+          R.summarize(res2)["kinds"]["state-dead"]["baseline_evidence_n"] == 1)
+
+
 if __name__ == "__main__":
     test_load_corpus_filters()
     test_recall_and_specificity_on_carrier()
@@ -169,5 +193,6 @@ if __name__ == "__main__":
     test_quote_narration_extra_positive()
     test_guess_names_skips_pronouns()
     test_no_decoy_kinds_declared()
+    test_measurability_flag_is_actually_read()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

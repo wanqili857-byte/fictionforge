@@ -6,14 +6,11 @@
 - `violations_abs` 绝对违反数——不受篇幅影响，二者同报才不可刷
 
 其余：
-- `pass_k`：k 次重复中「零违反」的比例（不是 pass@k——这里 k 次都要过）
-- `bootstrap_ci`：自助法置信区间（固定种子可复现）
 - `attribution`：三档消融的差值（bare→mid 上下文工程；mid→full 门禁）
 - `load_runs`：从跑批目录读回结果（I/O 层，目录结构见 batch.py）
 """
 
 import json
-import random
 from pathlib import Path
 
 TIERS = ("bare", "mid", "full")
@@ -95,29 +92,6 @@ def summarize_run(violations: list, chars: int) -> dict:
         "core_abs": core,
         "core_per_10k": violations_per_10k(core, chars),
     }
-
-
-def pass_k(violation_counts: list) -> float:
-    """k 次重复中零违反的比例。空输入 → 0.0。"""
-    if not violation_counts:
-        return 0.0
-    return round(sum(1 for c in violation_counts if c == 0) / len(violation_counts), 4)
-
-
-def bootstrap_ci(samples: list, iters: int = 2000, seed: int = 0,
-                 alpha: float = 0.05) -> tuple:
-    """自助法置信区间（固定种子 → 可复现）。样本为空 → (0.0, 0.0)。"""
-    if not samples:
-        return (0.0, 0.0)
-    rng = random.Random(seed)
-    n = len(samples)
-    means = []
-    for _ in range(iters):
-        means.append(sum(rng.choice(samples) for _ in range(n)) / n)
-    means.sort()
-    lo = means[int(iters * (alpha / 2))]
-    hi = means[min(iters - 1, int(iters * (1 - alpha / 2)))]
-    return (round(lo, 3), round(hi, 3))
 
 
 # ── 归因（三档消融）──────────────────────────────────────────────────
@@ -289,9 +263,13 @@ def aggregate_by_model(runs: dict, expected_chapters: int = None) -> list:
             per_tier[tier] = round(sum(cores) / len(cores), 2) if cores else 0.0
             total_rates[tier] = round(sum(totals) / len(totals), 2) if totals else 0.0
             costs += [r["cost"] for r in rs]
+        # 传**推导后**的 expected，不是原参数：expected_chapters 为 None 时
+        # 本函数按「最大完成度」兜底（上面 236-239 行），而 gate_contribution
+        # 拿到 None 就**一条都不剔除**——同一份 runs，两处剔除规则不同
+        # （第二轮评审 kimi F8：上一轮只修了「有没有这个参数」，没修「传的是哪个」）。
         gate = gate_contribution({k: v for k, v in runs.items()
                                   if v["model"] == model},
-                                 expected_chapters=expected_chapters)
+                                 expected_chapters=expected)
         att = attribution(per_tier)
         att.pop("gate_postprocessing", None)   # 用配对测量替代，见 gate_paired
         out.append({
@@ -419,13 +397,15 @@ def render_markdown(rows: list, agg: list) -> str:
                      f"{r['chars']} | {r['violations_abs']} | {r['core_abs']} | "
                      f"{r['core_per_10k']} | {r['length_abs']} | {r['style_abs']} | "
                      f"{r['pov_abs']} | {r['state_abs']} | {fixed} | {cost} |")
+    # 部分完成的 run **每一条**都要有脚注。原来循环里带 `break`，只解释第一行——
+    # 报告里出现两行 ⚠ 而只有一个说明时，第二行就成了没有解释的异常数字
+    # （第二轮外部评审 codex F24）。
     for r in rows:
         if r.get("partial"):
             lines.append("")
             lines.append(f"> ⚠ `{r['run_id']}` 仅完成 {r['chapters_done']}/"
                          f"{r['expected_chapters']} 章，**不参与汇总**"
                          f"（数字不可与完整运行比较）。")
-            break
     lines += ["", "## 按模型汇总（三档归因，核心违反率）", "",
               "| 模型 | bare | mid | full | 上下文工程(bare→mid) | 合计(bare→full) | 平均成本$ |",
               "|---|---|---|---|---|---|---|"]

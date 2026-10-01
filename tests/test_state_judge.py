@@ -145,20 +145,29 @@ def test_dead_resurrection():
 
 # ── 时间倒流（账本级） ────────────────────────────────────────────────
 
-def test_timeline_regression():
-    bad = build_ledger("T", [
-        spec(1, ["第3天上午 @A"]),
-        spec(2, ["第1天上午 @B"]),
-    ], cast_names=[])
-    vs = state_judge("随便写。", bad, chapter=2, run_id="r1")
-    tl = [v for v in vs if "timeline" in v.probe_id]
-    check("账本时间倒流转 Violation", len(tl) == 1 and tl[0].type == ViolationType.STATE)
+def test_judge_is_text_only():
+    """判据只读正文——宇宙缺陷不再记到**模型**头上（第二轮评审 kimi F6）。
 
-    ok = build_ledger("T", [
-        spec(1, ["第1天上午 @A"]), spec(2, ["第2天上午 @B"]),
-    ], cast_names=[])
-    check("正常时间线不报",
-          [v for v in state_judge("x。", ok, 2, "r1") if "timeline" in v.probe_id] == [])
+    曾经的 `state-timeline` / `state-item` 两条探针只读账本（= spec），
+    对任何模型输出都是常量：spec 写错会被记成模型违规，且它们恒不作为。
+    现已移到 `generator.invariants()`（阴性对照在 tests/test_universe.py）。
+    这里守的是**它们不会爬回来**：夹具是一份时间倒退 + 物品双持有的账本，
+    正文完全干净——判据必须一条都不报。
+    """
+    bad = build_ledger("T", [
+        spec(1, ["第3天上午 @A"], delta={"items": {"旧终端": "江晚"}}),
+        spec(2, ["第1天上午 @B"], delta={"items": {"旧终端": "老周"}}),
+    ], cast_names=["江晚", "老周"])
+    vs = state_judge("随便写。", bad, chapter=2, run_id="r1")
+    check("干净的正文在坏账本上零违规（判据只读正文）", vs == [])
+    check("账本时间倒退不由模型判据报",
+          [v for v in vs if "timeline" in v.probe_id] == [])
+    check("物品双持有不由模型判据报",
+          [v for v in vs if "item" in v.probe_id] == [])
+    # 反向：正文里的真违反在**同一份坏账本**上仍要报（别把判据一起删了）
+    led = ledger_with_death()
+    check("同一路径下正文违反照报",
+          len(state_judge("老周把水递过来。", led, 3, "r1")) == 1)
 
 
 # ── 日期矛盾（正文 vs 锚点） ──────────────────────────────────────────
@@ -179,27 +188,6 @@ def test_day_contradiction():
 
     vs4 = state_judge("第五天，她又来了。", led, chapter=2, run_id="r1")
     check("与锚点一致不报", [v for v in vs4 if "day" in v.probe_id] == [])
-
-
-# ── 物品双持有 ────────────────────────────────────────────────────────
-
-def test_item_conflict():
-    led = build_ledger("T", [
-        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "江晚"}}),
-        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老周"}}),
-    ], cast_names=["江晚", "老周"])
-    vs = state_judge("旧终端在桌上。", led, chapter=2, run_id="r1")
-    ic = [v for v in vs if "item" in v.probe_id]
-    check("双持有命中", len(ic) == 1 and ic[0].type == ViolationType.STATE)
-
-    # 带转移注记 → 豁免（作者声明 transfer）
-    led2 = build_ledger("T", [
-        spec(1, ["第1天上午 @A"], delta={"items": {"旧终端": "江晚"}}),
-        spec(2, ["第2天上午 @B"], delta={"items": {"旧终端": "老周"},
-                                        "transfer": ["旧终端"]}),
-    ], cast_names=["江晚", "老周"])
-    check("有转移注记豁免",
-          [v for v in state_judge("x。", led2, 2, "r1") if "item" in v.probe_id] == [])
 
 
 # ── 边界与确定性 ──────────────────────────────────────────────────────
@@ -223,9 +211,8 @@ def test_edges():
 
 if __name__ == "__main__":
     test_dead_resurrection()
-    test_timeline_regression()
+    test_judge_is_text_only()
     test_day_contradiction()
-    test_item_conflict()
     test_edges()
     print(f"\n结果: {_PASS}/{_PASS + _FAIL} 通过")
     sys.exit(1 if _FAIL else 0)

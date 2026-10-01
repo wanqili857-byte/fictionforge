@@ -11,9 +11,10 @@
     · 正例必须被抓到        → 召回（recall）
     · 诱饵必须不被抓到      → 特异性（specificity）—— 这就是真实文本上的误报探针
 
-  孪生句是关键：两句只差一个词（「祁三走进来」vs「祁三的名字写在册子上」、
-  「第1天」vs「第二天」），载体文本、位置、长度全一样。于是「抓到 / 没抓到」
-  只可能是判据本身的差别，不是文本差异造成的。
+  成对句是关键：**同载体、同位置、同插入长度**，差异只可能来自被插入的那句本身。
+  注意别把这套说成「两句只差一个词」——那只对天数那一对成立（`第1天`/`第二天`）；
+  死人复活那一对差的是**谓语类型**（「祁三走进来」= 活动 vs「祁三的名字写在册子上」
+  = 遗物指称），句子长度也不同。措辞说强了，方法就成了它撑不住的样子（第二轮评审）。
 
 为什么不用人工标注：标注的是一句话该不该报，而这里我们**构造**了答案——
 真值来自注入，不来自判断。人工标注留给 W5 的语义判定层（知识边界那种
@@ -249,7 +250,16 @@ def calibrate_texts(texts: list, chapter: int = 2) -> dict:
                 extra = _signal(ex_vs, pref) > base[pref]
             row["probes"][p["kind"]] = {"recall": hit_pos, "specificity": dec,
                                         "recall_extra": extra,
-                                        "baseline_hits": base[pref]}
+                                        "baseline_hits": base[pref],
+                                        # 该类要能测，前提是探针实体在语料里出现；
+                                        # 否则「注入前零命中」是构造决定的，不是证据。
+                                        # 这个布尔值由 summarize 用来算「有几段文本的
+                                        # 基线是证据」——**别再让它只声明不读**
+                                        # （第二轮评审：needs_entity_in_corpus 声明 5 处、读 0 处）。
+                                        "needs_entity": p["needs_entity_in_corpus"],
+                                        "baseline_is_evidence":
+                                            (not p["needs_entity_in_corpus"]
+                                             or PROBE_DEAD in text)}
         rows.append(row)
     return {"chapter": chapter, "rows": rows}
 
@@ -262,11 +272,17 @@ def summarize(result: dict) -> dict:
         rec = [r["probes"][k]["recall"] for r in result["rows"]]
         spec = [r["probes"][k]["specificity"] for r in result["rows"]
                 if r["probes"][k]["specificity"] is not None]
+        ev = sum(1 for r in result["rows"]
+                 if r["probes"][k]["baseline_is_evidence"])
         kinds[k] = {
             "what": p["what"],
             "recall": round(sum(rec) / len(rec), 3) if rec else None,
             "specificity": round(sum(spec) / len(spec), 3) if spec else None,
             "n": len(rec),
+            # 基线是证据的文本数。needs_entity 类若少于 n，「注入前零命中」
+            # 有一部分只是构造决定的——读结论时必须看这一列。
+            "baseline_evidence_n": ev,
+            "needs_entity_in_corpus": p["needs_entity_in_corpus"],
         }
     # 「干净文本零命中」只在探针实体真的出现在语料里时才算证据（评审 F3）
     measurable = [r for r in result["rows"] if r["probe_entity_in_corpus"]]
@@ -309,14 +325,20 @@ def render_markdown(summary: dict, result: dict, corpus_label: str) -> str:
     L = [f"# 判定器真实文本校准 · {corpus_label}", "",
          f"样本：{summary['texts']} 段正文，共 {summary['chars']} 字；"
          f"注入正例/诱饵各 {summary['texts']} 次/类。", "",
-         "方法：把「已知真违反」与「不该报的孪生句」分别插进真实文本"
-         "（两句只差一个词，载体与位置相同），看判定器的反应。"
+         "方法：把「已知真违反」与**不该报的成对句**分别插进真实文本"
+         "（同载体、同位置、同插入长度），看判定器的反应。"
          "真值来自注入，不来自人工判断。", "",
-         "| 判据 | 测什么 | 召回（正例被抓） | 特异性（诱饵未误报） |",
-         "|---|---|---|---|"]
+         "> 措辞订正：不写成「两句只差一个词」——那只对天数那一对成立。"
+         "死人复活那一对差的是谓语类型（活动 vs 遗物指称），长度也不同。"
+         "保证来自「同载体、同位置、同插入长度」，不是来自字面相似。", "",
+         "| 判据 | 测什么 | 召回（正例被抓） | 特异性（诱饵未误报） | 基线是证据的文本 |",
+         "|---|---|---|---|---|"]
     for k, v in summary["kinds"].items():
         spec = "—（该类无诱饵）" if v["specificity"] is None else f"{v['specificity']:.0%}"
-        L.append(f"| `{k}` | {v['what']} | {v['recall']:.0%} | {spec} |")
+        ev = v.get("baseline_evidence_n")
+        evt = "—" if ev is None else (f"{ev}/{v['n']}" if v.get("needs_entity_in_corpus")
+                                      else f"{v['n']}/{v['n']}")
+        L.append(f"| `{k}` | {v['what']} | {v['recall']:.0%} | {spec} | {evt} |")
     L += ["", "真实文本自身的固有命中（未经任何注入）：", "",
           "| 判据 | 固有命中 | 说明 |", "|---|---|---|"]
     for k, n in summary["clean_by_kind"].items():

@@ -326,6 +326,21 @@ def invariants(u: Universe) -> list:
         if not all(s.get("scene_anchor") for s in secs):
             out.append(f"第{sp['chapter']}章存在无锚点节")
 
+    # 物品持有：同一物品先后声明给不同持有者，且那一章没有 transfer 注记。
+    # **这是宇宙自检，不是模型判定**——它只读 spec，与章节正文无关，
+    # 因此对任何模型输出都是常量。原来长在 bench/judges/state_judge.py 里
+    # （探针 state-item），第二轮外部评审指出那是「把宇宙自检混进模型判据」：
+    # spec 写错会被记成模型违规，且它在 9 个官方 run 里恒定不作为。
+    holders = {}
+    for sp in sorted(u.specs, key=lambda x: x["chapter"]):
+        delta = sp.get("state_delta") or {}
+        for item, holder in (delta.get("items") or {}).items():
+            prev = holders.get(item)
+            if prev and prev[1] != holder and item not in (delta.get("transfer") or []):
+                out.append(f"物品 {item} 在 ch{sp['chapter']} 由 {prev[1]} 变为 {holder}，"
+                           f"且无 transfer 注记（ch{prev[0]} 起由 {prev[1]} 持有）")
+            holders[item] = (sp["chapter"], holder)
+
     # 时间线单调（天随章递增）
     days = []
     for sp in u.specs:

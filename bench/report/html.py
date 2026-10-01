@@ -20,33 +20,66 @@ import json
 from pathlib import Path
 
 # ── 配色（与 dataviz 参考调色板一致；改动需重跑校验脚本）────────────────
+# **单一事实源**：CSS 里的 `--s1..--sN` 与图表/图例的取色都由这张表生成。
+# 旧版把 3 组颜色写死在 CSS、把 `SERIES` 定义在 Python 却从不引用——
+# 于是第 4 个模型（BENCH_PROTOCOL §8 明确欢迎外部提交）取 `var(--s4)` 时
+# 变量不存在，柱与图例色块一起退化成同一个默认色，**互相不可区分**
+# （第一轮 doubao S15，当时 3 模型未触发，漏进了台账；第二轮 codex 重新发现）。
+# 现在颜色跟随**模型身份**（短名匹配），不是位置索引——名次变动不会重新上色。
 SERIES = [  # (模型短名, 亮色, 暗色)
     ("glm-flash", "#2a78d6", "#3987e5"),
     ("ds-flash", "#eb6834", "#d95926"),
     ("db-lite", "#1baf7a", "#199e70"),
+    # 备用槽位：roster 扩到 4+ 时不会无颜色可用。超出这张表则报错，
+    # 不静默循环配色（dataviz：分类色不得循环使用）
+    ("(备用 4)", "#8a5cd6", "#a07ae0"),
+    ("(备用 5)", "#c2913a", "#d9a94f"),
+    ("(备用 6)", "#2f9fb5", "#43b6cb"),
 ]
 TIERS = [("bare", "裸写"), ("mid", "注入上下文"), ("full", "满配门禁")]
+
+
+def series_color(model: str, index: int = 0) -> str:
+    """模型 → 该系列的颜色变量名。
+
+    ① 先按短名匹配 `SERIES`——颜色跟**模型身份**走，名次变动不重新上色；
+    ② 匹配不上（新模型）按**位置**取槽位，保证不与已匹配的撞色；
+    ③ 超过槽位数一律归到 `--s-over`（中性灰），**不循环配色**——
+       循环会让两个不同模型拿到同一个颜色，那正是这个函数要防的事。
+    """
+    for i, (short, _light, _dark) in enumerate(SERIES):
+        if short and short in (model or ""):
+            return f"var(--s{i + 1})"
+    return f"var(--s{index + 1})" if index < len(SERIES) else "var(--s-over)"
+
+
+def _series_vars() -> str:
+    """由 `SERIES` 生成 `--s1..--sN`（亮/暗两套），供 CSS 注入。"""
+    light = " ".join(f"--s{i + 1}:{c[1]};" for i, c in enumerate(SERIES))
+    dark = " ".join(f"--s{i + 1}:{c[2]};" for i, c in enumerate(SERIES))
+    return light, dark
+
 
 _CSS = """
 :root{
   color-scheme: light;
   --surface-1:#fcfcfb; --surface-2:#f4f4f2; --border:#dcdcd6;
   --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#7a7975;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --grid:#e6e6e1;
+  /*SERIES_LIGHT*/ --s-over:#8a8a84; --grid:#e6e6e1;
 }
 @media (prefers-color-scheme: dark){
   :root:where(:not([data-theme="light"])){
     color-scheme: dark;
     --surface-1:#1a1a19; --surface-2:#232322; --border:#3a3a37;
     --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#95948a;
-    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --grid:#33332f;
+    /*SERIES_DARK*/ --s-over:#9a9a93; --grid:#33332f;
   }
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
   --surface-1:#1a1a19; --surface-2:#232322; --border:#3a3a37;
   --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#95948a;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --grid:#33332f;
+  /*SERIES_DARK*/ --s-over:#9a9a93; --grid:#33332f;
 }
 *{box-sizing:border-box}
 body{margin:0;padding:28px 20px 64px;background:var(--surface-1);color:var(--text-primary);
@@ -97,6 +130,13 @@ def _fmt(v) -> str:
 
 # ── 图：分组柱状（x=三档，系列=模型）──────────────────────────────────
 
+def _css() -> str:
+    """把 SERIES 展开进 CSS——颜色只有一处定义（SERIES）。"""
+    light, dark = _series_vars()
+    return (_CSS.replace("/*SERIES_LIGHT*/", light)
+                 .replace("/*SERIES_DARK*/", dark))
+
+
 def render_chart(core_by_model_tier: dict, models: list, width: int = 760,
                  height: int = 300) -> str:
     """core_by_model_tier: {模型: {档位: 值}}；models 决定系列顺序（固定，按实体）。"""
@@ -134,7 +174,7 @@ def render_chart(core_by_model_tier: dict, models: list, width: int = 760,
         for mi, model in enumerate(models):
             v = core_by_model_tier.get(model, {}).get(tier, 0) or 0
             bx = x0 + mi * (bar_w + gap)
-            color = f"var(--s{mi + 1})"
+            color = series_color(models[mi], mi)
             h = max(2.0, (v / top) * plot_h)          # 0 也留 2px 残迹：柱存在感 > 无
             by = pad_t + plot_h - h
             p.append(
@@ -155,7 +195,7 @@ def render_chart(core_by_model_tier: dict, models: list, width: int = 760,
 
 def render_legend(models: list) -> str:
     items = "".join(
-        f'<span><i class="sw" style="background:var(--s{i + 1})"></i>{_esc(m)}</span>'
+        f'<span><i class="sw" style="background:{series_color(m, i)}"></i>{_esc(m)}</span>'
         for i, m in enumerate(models))
     return f'<div class="legend">{items}<span class="mut">颜色跟随模型，不随名次变动</span></div>'
 
@@ -166,6 +206,59 @@ def _table(headers: list, rows: list) -> str:
     th = "".join(f"<th>{_esc(h)}</th>" for h in headers)
     tr = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
     return f'<div class="tblwrap"><table><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
+
+
+def _harness_finding(agg):
+    """「上下文工程对谁帮助最大」——**从数据现算**，不写死句子。
+
+    写死的代价先前付过一次：初版页面上钉着一句「给 glm 注入上下文，它反而更差」，
+    那是当时被头条推翻的结论；数据改了两轮，卡片照旧渲染，页面成了自证。
+    """
+    deltas = []
+    for a in agg or []:
+        t = a.get("core_rate_by_tier") or {}
+        if t.get("bare") is None or t.get("mid") is None:
+            continue
+        deltas.append((a["model"], round(t["bare"] - t["mid"], 2)))   # 正 = 注入后更好
+    if not deltas:
+        return ""
+    deltas.sort(key=lambda x: -x[1])
+    best, bd = deltas[0]
+    body = f"<b>{_esc(best)}</b> 受益最大（裸写→注入上下文 {bd:+.2f} 违反/万）"
+    if len(deltas) > 1:
+        worst, wd = deltas[-1]
+        body += f"；<b>{_esc(worst)}</b> 最小（{wd:+.2f}）"
+    return ('<div class="card finding"><b>上下文工程对谁有用：</b>' + body +
+            "。<b>「哪个模型最好」取决于你把它装进什么样的管线。</b></div>")
+
+
+def _state_axis_card(runs):
+    """状态轴在入库产物里贡献了多少——**现算**，并如实说明它意味着什么。
+
+    这条必须常驻页面：一个叫「长程一致性」的基准，读者有权第一眼知道
+    一致性判据在这批产物里命中了几条。零命中是观测（对照见
+    `python3 -m bench.calib.corpus_control bench/results/v2`），不是判据失效。
+
+    口径：直接数**产物里的全部判决**（修前 + 修后），不跟着下表走——
+    下表 full 档用门禁后的数字，混着算会让「合计」变成两种口径的和。
+    """
+    from bench.report.metrics import count_by_family
+    n_all = st_all = 0
+    for r in (runs or {}).values():
+        for key in ("pre_fix", "post_fix"):
+            vs = (r.get("violations") or {}).get(key) or []
+            n_all += len(vs)
+            st_all += count_by_family(vs).get("state", 0)
+    if not n_all:
+        return ""
+    return ('<div class="card finding"><b>状态轴的实际贡献：</b>'
+            f"入库产物的<b>全部 {n_all} 条判决</b>里，状态类"
+            f"（死人复活 / 天数倒退）<b>{st_all}</b> 条——本批语料在一致性轴上"
+            "<b>没有区分度</b>。同一批文本注入真违反后判据 189/189 全中、"
+            "孪生负例 0/189 误报，所以这是观测不是失效；"
+            "榜单实际排序的是文体与篇幅。"
+            "复现：<code>python3 -m bench.calib.corpus_control bench/results/v2</code>"
+            "</div>")
 
 
 def render_page(out_dir) -> str:
@@ -256,7 +349,7 @@ def render_page(out_dir) -> str:
         "<!doctype html>", '<html lang="zh-CN">', "<head>", '<meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
         "<title>CanonBench · 长程一致性基准</title>",
-        "<style>" + _CSS + "</style>", "</head>", "<body>", "<main>",
+        "<style>" + _css() + "</style>", "</head>", "<body>", "<main>",
         "<h1>CanonBench · 长程一致性基准</h1>",
         '<p class="lede">12 章的小说里，第 2 章死掉的人会不会在第 4 章端着水走过来？'
         "——把长程一致性做成可自动判定、可复现、抗刷分的尺子。</p>",
@@ -264,9 +357,8 @@ def render_page(out_dir) -> str:
         f'宇宙生成器 <code>{_esc(gen)}</code> · 通道 {_esc("/".join(channels))} · '
         f'{_esc(when)} · k=1（方向性结论，精确归因需 k≥3）</p>',
 
-        '<div class="card finding"><b>反直觉发现：</b>给 glm 注入上下文，它反而更差'
-        "（跨两期跑批复现）；deepseek 与豆包都是正贡献。"
-        "<b>「哪个模型最好」取决于你把它装进什么样的管线。</b></div>",
+        _harness_finding(agg),
+        _state_axis_card(runs),
 
         "<h2>三档 harness 消融</h2>",
         '<div class="chart-wrap">', render_chart(by_model, models), "</div>",

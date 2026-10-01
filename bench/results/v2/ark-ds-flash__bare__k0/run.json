@@ -17,7 +17,7 @@
   },
   "bench": {
     "bench_version": "0.1.0",
-    "judge_mechanical_version": "m0.4.0",
+    "judge_mechanical_version": "m0.5.0",
     "judge_semantic_model": "",
     "judge_semantic_prompt_version": "",
     "universe_generator_version": "u0.1.0",
@@ -42,7 +42,7 @@
   "k_index": 0,
   "max_tokens": 8192,
   "model": "deepseek-v4-1-flash-260910",
-  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:09:15.615729+00:00",
+  "notes": "billing=subscription; proxy=policy:direct; rejudged_at=2026-10-01T15:53:59.626988+00:00",
   "prompt_hashes": {
     "1": "f7f12bb379075103d6ed6585ac7919b749316dc266126b67610f9b41cc5286ff",
     "2": "4f443f7b4d87212bf5cbf805c5f8550c900de76f44aef722adcfa8d427bcbeea",
