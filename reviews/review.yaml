@@ -1,0 +1,54 @@
+# CanonBench 独立复核配置。
+#
+# 两条独立性轴都跨（见 quorum README）：
+#   vendor  —— 谁训的权重：moonshot / 字节 / deepseek（互不相同，故可各自 primary）
+#   harness —— 哪个 CLI 在跑：claude-cli ×2 + codex-cli ×1（第三个 harness 由 codex 提供）
+#
+# 注记（应当诚实写在这里，而不是留给读者猜）：两个 primary 走同一个 harness，
+# 它们的一致可能部分来自 Claude Code 这套 loop。codex 那条才是第二个 harness，
+# 但它 role=cross、不计入置信度。
+#
+# COI：CanonBench 的被测名单里就有智谱 / 字节 / DeepSeek 三家。因此
+# **优先让不在被测名单里的厂商当 primary**（moonshot 的 kimi 不在名单里），
+# 另一家 primary 用字节——它在名单里，故其结论读时需打折扣。这条写进工单。
+
+project: canonbench
+repo: ..                        # 相对本文件 → 仓库根
+brief: brief.md
+out_dir: out
+ledger: dispose.md
+sources: ["bench", "docs", "tests", "README.md", "CHANGELOG.md", ".github"]
+snapshot_exclude: ["reviews/out", "runs", ".venv", "__pycache__"]
+
+channels:
+  # ① 方舟 coding plan —— 一个端点，两个厂商的模型
+  ark-kimi:
+    kind: claude-cli
+    model: kimi-k2.7-code
+    env:
+      ANTHROPIC_BASE_URL: https://ark.cn-beijing.volces.com/api/coding
+      ANTHROPIC_AUTH_TOKEN_FILE: ~/.config/ark_key
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000"
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "262144"
+  ark-doubao:
+    kind: claude-cli
+    model: doubao-seed-2-1-pro-260915
+    env:
+      ANTHROPIC_BASE_URL: https://ark.cn-beijing.volces.com/api/coding
+      ANTHROPIC_AUTH_TOKEN_FILE: ~/.config/ark_key
+      CLAUDE_CODE_MAX_OUTPUT_TOKENS: "32000"
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "262144"
+
+  # ② 本机 codex CLI（第二个 harness）
+  codex:
+    kind: codex-cli
+
+reviewers:
+  - {name: kimi,   channel: ark-kimi,   vendor: moonshot,  role: primary, timeout_s: 3000}
+  - {name: doubao, channel: ark-doubao, vendor: bytedance, role: primary, timeout_s: 3000}
+  - {name: codex,  channel: codex,      vendor: deepseek,  role: cross,   timeout_s: 3000}
+
+gates:
+  min_bytes: 2000
+  min_findings: 5
+  require_sections: ["最脆弱"]
